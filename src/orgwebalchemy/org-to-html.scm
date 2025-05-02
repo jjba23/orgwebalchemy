@@ -26,57 +26,88 @@
   #:use-module (ice-9 string-fun)
   #:use-module (ice-9 iconv))
 
-(define (drop-first-last s)
+(define-public (string-drop-first-last s)
   (if (> (string-length s) 2)
-
       (string-take (string-drop s 1)
                    (- (string-length s) 2)) s))
 
-(define (drop-first-last-n s n)
+(define-public (string-drop-first-last-n s n)
   (if (> (string-length s) 2)
 
       (string-take (string-drop s n)
                    (- (string-length s)
                       (+ 1 n))) s))
 
-(define (drop-first-last-line s)
+(define-public (string-drop-first-last-line s)
   (let* ((lines (string-split s #\newline))
          (middle (if (> (length lines) 2)
                      (drop-right (cdr lines) 1)
                      '())))
     (string-join middle "\n")))
 
-(define org-code-pattern
+(define-public org-code-pattern
   "~([^~]+)~")
 
-(define org-code-replacement
+(define-public org-code-replacement
   "<code class=\"~a\">~a</code>")
 
-(define org-code-block-pattern
+(define-public (org-code-replacement-procedure code-classes)
+  (lambda (m)
+    (format #f org-code-replacement
+            (string-join (map symbol->string code-classes) " ")
+            (string-drop-first-last (match:substring m)))))
+
+(define-public org-code-block-pattern
   "#\\+begin_src.*\n.*#\\+end_src")
 
-(define org-code-block-replacement
+(define-public org-code-block-replacement
   "<pre class=\"~a\">~a</pre>")
 
-(define org-em-pattern
+(define-public (org-code-block-replacement-procedure code-block-classes)
+  (lambda (m)
+    (format #f org-code-block-replacement
+            (string-join (map symbol->string code-block-classes) " ")
+            (string-drop-first-last-line (match:substring m)))))
+
+(define-public org-em-pattern
   "[[:space:]]/([^/<>:]+)/[[:space:]]")
+
+(define-public (org-em-replacement-procedure m)
+  (cond
+    ((string-contains (match:substring m) "://")
+     (string-drop-first-last (string-trim-both (match:substring m))))
+    (else (format #f org-em-replacement
+                  (string-drop-first-last (string-trim-both (match:substring m)))))))
 
 ;; space is important for italic replacement
 ;; due to links
-(define org-em-replacement
+(define-public org-em-replacement
   " <em>~a</em> ")
 
-(define org-strong-pattern
+(define-public org-strong-pattern
   "\\*([^*]+)\\*")
 
-(define org-strong-replacement
+(define-public org-strong-replacement
   "<strong>~a</strong>")
 
-(define org-link-pattern
+(define-public (org-strong-replacement-procedure m)
+  (format #f org-strong-replacement
+          (string-drop-first-last (match:substring m))))
+
+(define-public org-link-pattern
   "\\[\\[.*\\]\\]")
 
-(define org-link-replacement
+(define-public org-link-replacement
   "<a class=\"~a\" href=\"~a\">~a</a>")
+
+(define-public (org-link-replacement-procedure link-classes)
+  (lambda (m)
+    (let* ((l (string-drop-first-last (match:substring m)))
+           (split-l (string-split (string-replace-substring l "][" "|") #\|))
+           (link (string-drop (car split-l) 1))
+           (desc (string-drop-right (car (cdr split-l)) 1)))
+      (format #f org-link-replacement
+              (string-join (map symbol->string link-classes) " ") link desc))))
 
 (begin
   (define* (org-to-html org
@@ -92,87 +123,34 @@
                                                        org-link-pattern
                                                        org
                                                        'pre
-                                                       (lambda (m)
-                                                         (let* ((l (drop-first-last
-                                                                    (match:substring
-                                                                     m)))
-                                                                (split-l (string-split
-                                                                          (string-replace-substring
-                                                                           l
-                                                                           "]["
-                                                                           "|")
-                                                                          #\|))
-                                                                (link (string-drop
-                                                                       (car
-                                                                        split-l)
-                                                                       1))
-                                                                (desc (string-drop-right
-                                                                       (car (cdr
-                                                                             split-l))
-                                                                       1)))
-                                                           (format #f
-                                                            org-link-replacement
-                                                            (string-join (map
-                                                                          symbol->string
-                                                                          link-classes)
-                                                                         " ")
-                                                            link desc)))
+                                                       (org-link-replacement-procedure
+                                                        link-classes)
                                                        'post))
            (with-parsed-code (regexp-substitute/global #f
                                                        org-code-pattern
                                                        with-parsed-link
                                                        'pre
-                                                       (lambda (m)
-                                                         (format #f
-                                                          org-code-replacement
-                                                          (string-join (map
-                                                                        symbol->string
-                                                                        code-classes)
-                                                                       " ")
-                                                          (drop-first-last (match:substring
-                                                                            m))))
+                                                       (org-code-replacement-procedure
+                                                        code-classes)
                                                        'post))
            (with-parsed-italic (regexp-substitute/global #f
-                                                         org-em-pattern
-                                                         with-parsed-code
-                                                         'pre
-                                                         (lambda (m)
-                                                           (cond
-                                                             ((string-contains
-                                                               (match:substring
-                                                                m) "://")
-                                                              (drop-first-last
-                                                               (string-trim-both
-                                                                (match:substring
-                                                                 m))))
-                                                             (else (format #f
-                                                                    org-em-replacement
-                                                                    (drop-first-last
-                                                                     (string-trim-both
-                                                                      (match:substring
-                                                                       m)))))))
-                                                         'post))
+                                org-em-pattern
+                                with-parsed-code
+                                'pre
+                                org-em-replacement-procedure
+                                'post))
            (with-parsed-strong (regexp-substitute/global #f
-                                                         org-strong-pattern
-                                                         with-parsed-italic
-                                                         'pre
-                                                         (lambda (m)
-                                                           (format #f
-                                                            org-strong-replacement
-                                                            (drop-first-last (match:substring
-                                                                              m))))
-                                                         'post))
+                                org-strong-pattern
+                                with-parsed-italic
+                                'pre
+                                org-strong-replacement-procedure
+                                'post))
            (with-parsed-code-block (regexp-substitute/global #f
                                     org-code-block-pattern
                                     with-parsed-strong
                                     'pre
-                                    (lambda (m)
-                                      (format #f org-code-block-replacement
-                                              (string-join (map symbol->string
-                                                            code-block-classes)
-                                                           " ")
-                                              (drop-first-last-line (match:substring
-                                                                     m))))
+                                    (org-code-block-replacement-procedure
+                                     code-block-classes)
                                     'post)))
       with-parsed-code-block))
   (export org-to-html))
@@ -180,23 +158,23 @@
 ;; module tests
 (test-begin "org-to-html")
 
-(test-equal "drop-first-last normal case" "ell"
-            (drop-first-last "hello"))
-(test-equal "drop-first-last single char" "a"
-            (drop-first-last "a"))
-(test-equal "drop-first-last two chars" "ab"
-            (drop-first-last "ab"))
-(test-equal "drop-first-last empty string" ""
-            (drop-first-last ""))
+(test-equal "string-drop-first-last normal case" "ell"
+            (string-drop-first-last "hello"))
+(test-equal "string-drop-first-last single char" "a"
+            (string-drop-first-last "a"))
+(test-equal "string-drop-first-last two chars" "ab"
+            (string-drop-first-last "ab"))
+(test-equal "string-drop-first-last empty string" ""
+            (string-drop-first-last ""))
 
-(test-equal "drop-first-last-line normal case" "middle line"
-            (drop-first-last-line "first line\nmiddle line\nlast line"))
-(test-equal "drop-first-last-line single line" ""
-            (drop-first-last-line "single line"))
-(test-equal "drop-first-last-line two lines" ""
-            (drop-first-last-line "first line\nlast line"))
-(test-equal "drop-first-last-line empty input" ""
-            (drop-first-last-line ""))
+(test-equal "string-drop-first-last-line normal case" "middle line"
+            (string-drop-first-last-line "first line\nmiddle line\nlast line"))
+(test-equal "string-drop-first-last-line single line" ""
+            (string-drop-first-last-line "single line"))
+(test-equal "string-drop-first-last-line two lines" ""
+            (string-drop-first-last-line "first line\nlast line"))
+(test-equal "string-drop-first-last-line empty input" ""
+            (string-drop-first-last-line ""))
 
 (test-equal "org-to-html inline code parsing"
  "This is <code class=\"bg-stone-200/75 rounded-lg py-1 px-2\">test</code> code."
