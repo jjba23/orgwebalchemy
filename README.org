@@ -1,0 +1,17 @@
+
+* orgwebalchem
+
+See some example unit tests that showcase how this library can be used.
+
+#+begin_src scheme
+(test-equal "org-to-html inline italic parsing" "This is <em>test</em> code."
+            (org-to-html "This is /test/ code."))
+
+(test-equal "org-to-html inline strong parsing"
+            "This is <strong>test</strong> code."
+            (org-to-html "This is *test* code."))
+
+(test-equal "org-to-html inline combined formatting"
+            "This is <em><strong>test</strong></em> code."
+            (org-to-html "This is /*test*/ code."))
+#+end_src
