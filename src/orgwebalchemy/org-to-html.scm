@@ -1,4 +1,4 @@
-;;; orgwebalchemy - the CI/CD orchestrator written in Guile Scheme
+;;; orgwebalchemy
 
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
@@ -155,7 +155,9 @@
       with-parsed-code-block))
   (export org-to-html))
 
+;;
 ;; module tests
+;;
 (test-begin "org-to-html")
 
 (test-equal "string-drop-first-last normal case" "ell"
