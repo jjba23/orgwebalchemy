@@ -15,7 +15,7 @@
 ;; You should have received a copy of the Lesser GNU General Public License
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (orgwebalchemy parser)
+(define-module (orgwebalchemy org-to-html)
   #:use-module (ice-9 time)
   #:use-module (ice-9 format)
   #:use-module (ice-9 rdelim)
@@ -26,19 +26,19 @@
   #:use-module (ice-9 string-fun)
   #:use-module (ice-9 iconv))
 
-(define-public (string-drop-first-last s)
+(define (string-drop-first-last s)
   (if (> (string-length s) 2)
       (string-take (string-drop s 1)
                    (- (string-length s) 2)) s))
 
-(define-public (string-drop-first-last-n s n)
+(define (string-drop-first-last-n s n)
   (if (> (string-length s) 2)
 
       (string-take (string-drop s n)
                    (- (string-length s)
                       (+ 1 n))) s))
 
-(define-public (string-drop-first-last-line s)
+(define (string-drop-first-last-line s)
   (let* ((lines (string-split s #\newline))
          (middle (if (> (length lines) 2)
                      (drop-right (cdr lines) 1)
@@ -63,21 +63,8 @@
 (define-public org-code-block-replacement
   "<pre class=\"~a\">~a</pre>")
 
-(define-public (org-code-block-replacement-procedure code-block-classes)
-  (lambda (m)
-    (format #f org-code-block-replacement
-            (string-join (map symbol->string code-block-classes) " ")
-            (string-drop-first-last-line (match:substring m)))))
-
 (define-public org-em-pattern
   "[[:space:]]/([^/<>:]+)/[[:space:]]")
-
-(define-public (org-em-replacement-procedure m)
-  (cond
-    ((string-contains (match:substring m) "://")
-     (string-drop-first-last (string-trim-both (match:substring m))))
-    (else (format #f org-em-replacement
-                  (string-drop-first-last (string-trim-both (match:substring m)))))))
 
 ;; space is important for italic replacement
 ;; due to links
@@ -90,15 +77,28 @@
 (define-public org-strong-replacement
   "<strong>~a</strong>")
 
-(define-public (org-strong-replacement-procedure m)
-  (format #f org-strong-replacement
-          (string-drop-first-last (match:substring m))))
-
 (define-public org-link-pattern
   "\\[\\[.*\\]\\]")
 
 (define-public org-link-replacement
   "<a class=\"~a\" href=\"~a\">~a</a>")
+
+(define-public (org-code-block-replacement-procedure code-block-classes)
+  (lambda (m)
+    (format #f org-code-block-replacement
+            (string-join (map symbol->string code-block-classes) " ")
+            (string-drop-first-last-line (match:substring m)))))
+
+(define-public (org-em-replacement-procedure m)
+  (cond
+    ((string-contains (match:substring m) "://")
+     (string-drop-first-last (string-trim-both (match:substring m))))
+    (else (format #f org-em-replacement
+                  (string-drop-first-last (string-trim-both (match:substring m)))))))
+
+(define-public (org-strong-replacement-procedure m)
+  (format #f org-strong-replacement
+          (string-drop-first-last (match:substring m))))
 
 (define-public (org-link-replacement-procedure link-classes)
   (lambda (m)
