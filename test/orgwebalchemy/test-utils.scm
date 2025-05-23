@@ -15,9 +15,14 @@
 ;; You should have received a copy of the Lesser GNU General Public License
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-(use-modules (ice-9 rdelim))
-(use-modules (srfi srfi-64))
+(define-module (orgwebalchemy test-utils)
+  #:export (define-test))
 
-(define xs '("src/orgwebalchemy/org-to-html.scm"))
-
-(for-each (lambda(x) (load x)) xs)
+(define-syntax define-test
+  (syntax-rules ()
+                ((_ test-name e ...)
+                 (begin
+                   (define-public (test-name)
+                     e ...)
+                   (set-procedure-property! test-name
+                                            'srfi-64-test? #t)))))
