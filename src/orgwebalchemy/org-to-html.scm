@@ -96,7 +96,8 @@
 (define org-code-block-replacement-procedure
   (lambda (classes)
     (lambda (m)
-      (format #f (org-code-block-replacement)
+      (format #f
+              (org-code-block-replacement)
               (string-join (map symbol->string classes) " ")
               (string-drop-first-last-line (match:substring m))))))
 
@@ -104,17 +105,19 @@
   (lambda (classes)
     (lambda (m)
       (cond
-       ((string-contains (match:substring m) "://")
-        (string-drop-first-last (string-trim-both (match:substring m))))
-       (else (format #f (org-em-replacement)
-                     (string-join (map symbol->string classes) " ")
-                     (string-drop-first-last (string-trim-both (match:substring
-                                                                m)))))))))
+        ((string-contains (match:substring m) "://")
+         (string-drop-first-last (string-trim-both (match:substring m))))
+        (else (format #f
+                      (org-em-replacement)
+                      (string-join (map symbol->string classes) " ")
+                      (string-drop-first-last (string-trim-both (match:substring
+                                                                 m)))))))))
 
 (define org-strong-replacement-procedure
   (lambda (classes)
     (lambda (m)
-      (format #f (org-strong-replacement)
+      (format #f
+              (org-strong-replacement)
               (string-join (map symbol->string classes) " ")
               (string-drop-first-last (match:substring m))))))
 
@@ -125,13 +128,15 @@
              (split-l (string-split (string-replace-substring l "][" "|") #\|))
              (link (string-drop (car split-l) 1))
              (desc (string-drop-right (car (cdr split-l)) 1)))
-        (format #f (org-link-replacement)
+        (format #f
+                (org-link-replacement)
                 (string-join (map symbol->string classes) " ") link desc)))))
 
 (define org-code-replacement-procedure
   (lambda (classes)
     (lambda (m)
-      (format #f (org-code-replacement)
+      (format #f
+              (org-code-replacement)
               (string-join (map symbol->string classes) " ")
               (string-drop-first-last (match:substring m))))))
 
@@ -164,13 +169,15 @@
                                                        (org-em-pattern)
                                                        with-parsed-code
                                                        'pre
-                                                       (org-em-replacement-procedure em-classes)
+                                                       (org-em-replacement-procedure
+                                                        em-classes)
                                                        'post))
          (with-parsed-strong (regexp-substitute/global #f
                                                        (org-strong-pattern)
                                                        with-parsed-italic
                                                        'pre
-                                                       (org-strong-replacement-procedure strong-classes)
+                                                       (org-strong-replacement-procedure
+                                                        strong-classes)
                                                        'post))
          (with-parsed-code-block (regexp-substitute/global #f
                                                            (org-code-block-pattern)
