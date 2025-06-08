@@ -15,6 +15,8 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
+.PHONY: test
+
 # Logging helpers
 
 define orgwebalchemy-log-info
@@ -27,11 +29,16 @@ fmt:
 	$(call orgwebalchemy-log-info,"formatting all Scheme files")
 	find . -maxdepth 8 -name "*.scm" -type f -exec guix style -f {} \;
 
-
 # Development REPL
 repl:
-	guix shell -m manifest.scm -- guile --fresh-auto-compile -c '((@ (ares server) run-nrepl-server))'
+	guix shell -m manifest.scm -- \
+		guile \
+		-L ./src \
+		-c '((@ (ares server) run-nrepl-server))'
 
 # Unit tests
 test:
-	guix shell -m manifest.scm -- guile --fresh-auto-compile run-tests.scm
+	guix shell -m manifest.scm -- \
+		guile -L ./src \
+		-L ./test \
+		-c "((@ (orgwebalchemy test-runners) run-project-tests))"
