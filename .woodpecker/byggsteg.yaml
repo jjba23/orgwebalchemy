@@ -21,7 +21,7 @@ variables:
   - &byggsteg_poll_job_image 'jjba23/byggsteg-woodpecker-poll-job:v0.0.11'
   
 steps:
-  submit-byggsteg-test-job-jointhefreeworld:
+  submit-byggsteg-job-jointhefreeworld:
     image: *byggsteg_submit_job_image
     when:
       - event: [ "push" ]
@@ -39,7 +39,7 @@ steps:
             (branch-name . "%%CI_COMMIT_BRANCH%%")            
             (clone-url . "%%CI_REPO_CLONE_URL%%")))
             
-  poll-byggsteg-test-job-jointhefreeworld:
+  poll-byggsteg-job-jointhefreeworld:
     image: *byggsteg_poll_job_image
     when:
       - event: [ "push" ]
