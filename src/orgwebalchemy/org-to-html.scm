@@ -46,6 +46,13 @@
                         string-drop-first-last-n
                         string-drop-first-last-line))
 
+(define* (mk-class xs)
+  (cond
+    ((nil? xs)
+     "")
+    (else (string-join (sort (map symbol->string
+                                  (delete-duplicates xs)) string<?) " "))))
+
 (define (string-drop-first-last s)
   (if (> (string-length s) 2)
       (string-take (string-drop s 1)
@@ -107,7 +114,7 @@
     (lambda (m)
       (format #f
               (org-code-block-replacement)
-              (string-join (map symbol->string classes) " ")
+              (mk-class classes)
               (string-drop-first-last-line (match:substring m))))))
 
 (define org-em-replacement-procedure
@@ -118,7 +125,7 @@
          (string-drop-first-last (string-trim-both (match:substring m))))
         (else (format #f
                       (org-em-replacement)
-                      (string-join (map symbol->string classes) " ")
+                      (mk-class classes)
                       (string-drop-first-last (string-trim-both (match:substring
                                                                  m)))))))))
 
@@ -127,7 +134,7 @@
     (lambda (m)
       (format #f
               (org-strong-replacement)
-              (string-join (map symbol->string classes) " ")
+              (mk-class classes)
               (string-drop-first-last (match:substring m))))))
 
 (define org-link-replacement-procedure
@@ -139,14 +146,14 @@
              (desc (string-drop-right (car (cdr split-l)) 1)))
         (format #f
                 (org-link-replacement)
-                (string-join (map symbol->string classes) " ") link desc)))))
+                (mk-class classes) link desc)))))
 
 (define org-code-replacement-procedure
   (lambda (classes)
     (lambda (m)
       (format #f
               (org-code-replacement)
-              (string-join (map symbol->string classes) " ")
+              (mk-class classes)
               (string-drop-first-last (match:substring m))))))
 
 (define org-hr-replacement-procedure
@@ -154,7 +161,7 @@
     (lambda (m)
       (format #f
               (org-hr-replacement)
-              (string-join (map symbol->string classes) " ")))))
+              (mk-class classes)))))
 
 (define* (org-to-html str
                       #:key (link-classes '(text-blue-600 hover:text-blue-800

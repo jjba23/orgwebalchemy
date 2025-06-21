@@ -50,13 +50,13 @@
 
              (test-group "inline code"
                          (test-equal "org-to-html inline code parsing"
-                          "This is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg py-1 px-2\">test</code> code."
+                          "This is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">test</code> code."
                           (org-to-html "This is ~test~ code.")))
 
              (test-group "code block"
 
                          (test-equal "org-to-html code block parsing"
-                          "<pre class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg my-3 py-2 px-3 whitespace-pre overflow-x-scroll\">some code
+                          "<pre class=\"bg-stone-200/75 dark:bg-stone-700/75 my-3 overflow-x-scroll px-3 py-2 rounded-lg whitespace-pre\">some code
 inside block</pre>"
                           (org-to-html "#+begin_src
 some code
@@ -65,7 +65,10 @@ inside block
 
                          (test-equal
                           "org-to-html mixed inline and block parsing"
-                          "Here is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg py-1 px-2\">inline</code> code and a block: <pre class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg my-3 py-2 px-3 whitespace-pre overflow-x-scroll\">code block</pre>"
+                          (string-append "Here is "
+                           "<code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">inline</code>"
+                           " code and a block: "
+                           "<pre class=\"bg-stone-200/75 dark:bg-stone-700/75 my-3 overflow-x-scroll px-3 py-2 rounded-lg whitespace-pre\">code block</pre>")
                           (org-to-html
                            "Here is ~inline~ code and a block: #+begin_src
 code block
@@ -91,12 +94,12 @@ code block
 
                          (test-equal
                           "org-to-html consecutive inline formatting"
-                          "<strong class=\"\">bold</strong> <em class=\"\">italic</em> <code class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg py-1 px-2\">code</code>"
+                          "<strong class=\"\">bold</strong> <em class=\"\">italic</em> <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">code</code>"
                           (org-to-html "*bold* /italic/ ~code~"))
 
                          (test-equal
                           "org-to-html mixed block and inline formatting"
-                          "Inline <code class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg py-1 px-2\">code</code> before block: <pre class=\"bg-stone-200/75 dark:bg-stone-700/75 rounded-lg my-3 py-2 px-3 whitespace-pre overflow-x-scroll\">block code</pre> after block."
+                          "Inline <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">code</code> before block: <pre class=\"bg-stone-200/75 dark:bg-stone-700/75 my-3 overflow-x-scroll px-3 py-2 rounded-lg whitespace-pre\">block code</pre> after block."
                           (org-to-html
                            "Inline ~code~ before block: #+begin_src
 block code
@@ -108,26 +111,27 @@ line</em> italic text."
                           (org-to-html "This is /multi\nline/ italic text."))
 
                          (test-equal "org-to-html inline link parsing"
-                          "This is <a class=\"text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:dark:text-blue-300 hover:underline font-bold\" href=\"https://www.google.com\">some link</a> code."
+                          "This is <a class=\"dark:text-blue-400 font-bold hover:dark:text-blue-300 hover:text-blue-800 hover:underline text-blue-600\" href=\"https://www.google.com\">some link</a> code."
                           (org-to-html
                            "This is [[https://www.google.com][some link]] code."))
 
                          (test-equal
                           "org-to-html inline link parsing of same desc"
-                          "This is <a class=\"text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:dark:text-blue-300 hover:underline font-bold\" href=\"https://www.google.com\">https://www.google.com</a> code."
+                          "This is <a class=\"dark:text-blue-400 font-bold hover:dark:text-blue-300 hover:text-blue-800 hover:underline text-blue-600\" href=\"https://www.google.com\">https://www.google.com</a> code."
                           (org-to-html
                            "This is [[https://www.google.com][https://www.google.com]] code."))
 
                          (test-equal
                           "org-to-html inline link parsing of same desc"
-                          "Created GitHub ticket here: <a class=\"text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:dark:text-blue-300 hover:underline font-bold\" href=\"https://github.com/flatpak/flatpak/issues/6135\">https://github.com/flatpak/flatpak/issues/6135</a>"
+                          (string-append "Created GitHub ticket here: "
+                           "<a class=\"dark:text-blue-400 font-bold hover:dark:text-blue-300 hover:text-blue-800 hover:underline text-blue-600\" href=\"https://github.com/flatpak/flatpak/issues/6135\">https://github.com/flatpak/flatpak/issues/6135</a>")
                           (org-to-html
                            "Created GitHub ticket here: [[https://github.com/flatpak/flatpak/issues/6135][https://github.com/flatpak/flatpak/issues/6135]]"))
 
                          (test-equal "org-to-html parses hr properly"
                           "
 some section
-<hr class=\"my-8 text-stone-500 dark:text-stone-500\"/>
+<hr class=\"dark:text-stone-500 my-8 text-stone-500\"/>
 then another
 "
                           (org-to-html
