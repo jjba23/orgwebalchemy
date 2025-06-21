@@ -156,7 +156,7 @@
               (org-hr-replacement)
               (string-join (map symbol->string classes) " ")))))
 
-(define* (org-to-html org
+(define* (org-to-html str
                       #:key (link-classes '(text-blue-600 hover:text-blue-800
                                             dark:text-blue-400
                                             hover:dark:text-blue-300
@@ -174,46 +174,54 @@
                                             px-3
                                             whitespace-pre
                                             overflow-x-scroll)))
-  (let* ((with-parsed-link (regexp-substitute/global #f
-                                                     (org-link-pattern)
-                                                     org
-                                                     'pre
-                                                     (org-link-replacement-procedure
-                                                      link-classes)
-                                                     'post))
-         (with-parsed-code (regexp-substitute/global #f
-                                                     (org-code-pattern)
-                                                     with-parsed-link
-                                                     'pre
-                                                     (org-code-replacement-procedure
-                                                      code-classes)
-                                                     'post))
-         (with-parsed-italic (regexp-substitute/global #f
-                                                       (org-em-pattern)
-                                                       with-parsed-code
-                                                       'pre
-                                                       (org-em-replacement-procedure
-                                                        em-classes)
-                                                       'post))
-         (with-parsed-strong (regexp-substitute/global #f
-                                                       (org-strong-pattern)
-                                                       with-parsed-italic
-                                                       'pre
-                                                       (org-strong-replacement-procedure
-                                                        strong-classes)
-                                                       'post))
-         (with-parsed-hr (regexp-substitute/global #f
-                                                   (org-hr-pattern)
-                                                   with-parsed-strong
-                                                   'pre
-                                                   (org-hr-replacement-procedure
-                                                    hr-classes)
-                                                   'post))
-         (with-parsed-code-block (regexp-substitute/global #f
-                                                           (org-code-block-pattern)
-                                                           with-parsed-hr
-                                                           'pre
-                                                           (org-code-block-replacement-procedure
-                                                            code-block-classes)
-                                                           'post)))
-    with-parsed-code-block))
+  (let* ((parse-functions (list (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-link-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-link-replacement-procedure
+                                                             link-classes)
+                                                            'post))
+                                (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-code-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-code-replacement-procedure
+                                                             code-classes)
+                                                            'post))
+                                (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-em-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-em-replacement-procedure
+                                                             em-classes)
+                                                            'post))
+                                (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-strong-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-strong-replacement-procedure
+                                                             strong-classes)
+                                                            'post))
+                                (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-hr-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-hr-replacement-procedure
+                                                             hr-classes)
+                                                            'post))
+                                (lambda (x)
+                                  (regexp-substitute/global #f
+                                                            (org-code-block-pattern)
+                                                            x
+                                                            'pre
+                                                            (org-code-block-replacement-procedure
+                                                             code-block-classes)
+                                                            'post)))))
+    (fold (lambda (fun accum)
+            (apply fun
+                   (list accum))) str parse-functions)))
