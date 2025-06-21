@@ -33,6 +33,9 @@
                         org-em-patern
                         org-em-replacement
                         org-em-replacement-procedure
+                        org-hr-patern
+                        org-hr-replacement
+                        org-hr-replacement-procedure
                         org-strong-pattern
                         org-strong-replacement
                         org-strong-replacement-procedure
@@ -80,6 +83,12 @@
 ;; due to links
 (define org-em-replacement
   (make-parameter " <em class=\"~a\">~a</em> "))
+
+(define org-hr-pattern
+  (make-parameter "\n---*\n"))
+
+(define org-hr-replacement
+  (make-parameter "<hr class=\"~a\"/>"))
 
 (define org-strong-pattern
   (make-parameter "\\*([^*]+)\\*"))
@@ -140,17 +149,31 @@
               (string-join (map symbol->string classes) " ")
               (string-drop-first-last (match:substring m))))))
 
+(define org-hr-replacement-procedure
+  (lambda (classes)
+    (lambda (m)
+      (format #f
+              (org-hr-replacement)
+              (string-join (map symbol->string classes) " ")))))
+
 (define* (org-to-html org
-                      #:key (link-classes '(text-blue-800 font-bold))
-                      (code-classes '(bg-stone-200/75 rounded-lg py-1 px-2))
+                      #:key (link-classes '(text-blue-600 hover:text-blue-800
+                                            dark:text-blue-400
+                                            hover:dark:text-blue-300
+                                            hover:underline font-bold))
+                      (code-classes '(bg-stone-200/75 dark:bg-stone-700/75
+                                                      rounded-lg py-1 px-2))
                       (em-classes '())
                       (strong-classes '())
-                      (code-block-classes '(bg-stone-200/75 rounded-lg
-                                                            my-3
-                                                            py-2
-                                                            px-3
-                                                            whitespace-pre
-                                                            overflow-x-scroll)))
+                      (hr-classes '(my-8 text-stone-500 dark:text-stone-500))
+                      (code-block-classes '(bg-stone-200/75
+                                            dark:bg-stone-700/75
+                                            rounded-lg
+                                            my-3
+                                            py-2
+                                            px-3
+                                            whitespace-pre
+                                            overflow-x-scroll)))
   (let* ((with-parsed-link (regexp-substitute/global #f
                                                      (org-link-pattern)
                                                      org
@@ -179,9 +202,16 @@
                                                        (org-strong-replacement-procedure
                                                         strong-classes)
                                                        'post))
+         (with-parsed-hr (regexp-substitute/global #f
+                                                   (org-hr-pattern)
+                                                   with-parsed-strong
+                                                   'pre
+                                                   (org-hr-replacement-procedure
+                                                    hr-classes)
+                                                   'post))
          (with-parsed-code-block (regexp-substitute/global #f
                                                            (org-code-block-pattern)
-                                                           with-parsed-strong
+                                                           with-parsed-hr
                                                            'pre
                                                            (org-code-block-replacement-procedure
                                                             code-block-classes)
