@@ -146,21 +146,6 @@ A list of symbols.
               (string-drop-first-last-line (match:substring m))))))
 
 (define org-em-replacement-procedure
-  "Return a function to replace emphasis markers.
-    @code{org-em-replacement-procedure} 
-
-    The returned function takes a match object as input. It returns the matched
-    string without the surrounding emphasis markers. For example, given the
-    match for @code{/italic/}, it returns @code{italic}. If the matched
-    string contains @code{://}, it is assumed to be a URL, and the function
-    returns the string with the surrounding whitespace and markers removed.
-
-    The @var{classes} argument is a string representing the CSS classes to be
-    added to the output.
-
-    @code{org-em-replacement-procedure} is primarily used by
-    @code{org-markup-replacement}.
-    @end defun"
   (lambda (classes)
     (lambda (m)
       (cond
