@@ -30,10 +30,10 @@
                         org-code-block-pattern
                         org-code-block-replacement
                         org-code-block-replacement-procedure
-                        org-em-patern
+                        org-em-pattern
                         org-em-replacement
                         org-em-replacement-procedure
-                        org-hr-patern
+                        org-hr-pattern
                         org-hr-replacement
                         org-hr-replacement-procedure
                         org-strong-pattern

@@ -13,6 +13,10 @@ Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library
 
 If you like my work, please support me by [[https://bmc.link/jjbigorra][buying me a cup of coffee ☕]] so I can continue with a lot of motivation.
 
+You can find the technical Guile Scheme API documentation for OrgWebAlchemy here:
+
+https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
+
 ------------------------
 
 * What OrgWebAlchemy gives you

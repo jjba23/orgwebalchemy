@@ -15,7 +15,10 @@
 # You should have received a copy of the Lesser GNU General Public License
 # along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-.PHONY: test
+.PHONY: test docs
+
+API_DOCS_CSS_URL:="https://jointhefreeworld.org/static-assets/api-docs/css/style.css"
+DEPLOY_WWW="/srv/http/jointhefreeworld.org"
 
 # Logging helpers
 
@@ -42,3 +45,19 @@ test:
 		guile -L ./src \
 		-L ./test \
 		-c "((@ (orgwebalchemy test-runners) run-project-tests))"
+
+
+# docs: Generate technical API documentation
+docs:
+	rm -rfv doc
+	guix shell -m manifest.scm -- documenta api ./src/orgwebalchemy
+	guix shell -m manifest.scm -- texi2any -v --html \
+		--css-ref=$(API_DOCS_CSS_URL) ./doc/api/index.texi
+	mv ./index ./doc/api-dist
+
+# deploy: Deploys the project and documentation to a web server directory.
+deploy: docs
+	rm -rfv $(DEPLOY_WWW)/api-docs/orgwebalchemy
+	mkdir -p $(DEPLOY_WWW)/api-docs/orgwebalchemy
+	mv doc/api-dist/* $(DEPLOY_WWW)/api-docs/orgwebalchemy/
+	rm -rfv doc

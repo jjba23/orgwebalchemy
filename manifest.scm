@@ -33,5 +33,7 @@
               #:prefix license:))
 
 (packages->manifest (list (specification->package "make") guile-next
+                          guile-documenta
+                          texinfo
                           guile-ares-rs))
 
