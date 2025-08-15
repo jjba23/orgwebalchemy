@@ -47,6 +47,34 @@
                         string-drop-first-last-line))
 
 (define* (mk-class xs)
+  "Return a sorted, space-separated string of unique class names from @var{xs}.
+
+@deffn Procedure mk-class xs
+Takes a list of symbols @var{xs}, removes any duplicates, converts them
+to strings, sorts them alphabetically, and returns them as a single,
+space-separated string. This is useful for creating a canonical CSS
+class attribute value.
+
+If @var{xs} is the empty list, an empty string is returned.
+
+@table @var
+@item xs
+A list of symbols.
+@end table
+
+@returns A string of unique, sorted names, joined by spaces.
+
+@example
+(mk-class '(input button primary input))
+@result{} \"button input primary\"
+
+(mk-class '(baz foo bar))
+@result{} \"bar baz foo\"
+
+(mk-class '())
+@result{} \"\"
+@end example
+@end deffn"
   (cond
     ((nil? xs)
      "")
@@ -118,6 +146,21 @@
               (string-drop-first-last-line (match:substring m))))))
 
 (define org-em-replacement-procedure
+  "Return a function to replace emphasis markers.
+    @code{org-em-replacement-procedure} 
+
+    The returned function takes a match object as input. It returns the matched
+    string without the surrounding emphasis markers. For example, given the
+    match for @code{/italic/}, it returns @code{italic}. If the matched
+    string contains @code{://}, it is assumed to be a URL, and the function
+    returns the string with the surrounding whitespace and markers removed.
+
+    The @var{classes} argument is a string representing the CSS classes to be
+    added to the output.
+
+    @code{org-em-replacement-procedure} is primarily used by
+    @code{org-markup-replacement}.
+    @end defun"
   (lambda (classes)
     (lambda (m)
       (cond
