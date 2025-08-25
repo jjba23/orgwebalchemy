@@ -15,10 +15,8 @@
 ;; You should have received a copy of the Lesser GNU General Public License
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (orgwebalchemy org-to-html-test)
-  #:use-module ((srfi srfi-64)
-                #:hide (define-test))
-  #:use-module (orgwebalchemy test-utils)
+(define-module (veritas unit org-to-html-spec)
+  #:use-module (veritas veritas)
   #:use-module (orgwebalchemy org-to-html))
 
 (define-test test-org-to-html
