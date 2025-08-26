@@ -19,7 +19,7 @@
   #:declarative? #t
   #:use-module (maak maak))
 
-;; ====== Maak file constants ======
+;; ====== Maak constants ======
 
 ;; The absolute URL for the CSS style-sheet used to style API documentation.
 (define api-docs-css-url
@@ -33,7 +33,7 @@
 (define project-name
   'orgwebalchemy)
 
-;; ====== Maak file tasks ======
+;; ====== Maak tasks ======
 
 (define (fmt)
   "Format Scheme source code files according to the Guix style guide."
@@ -47,7 +47,7 @@
 (define (docs)
   "Generate technical API documentation for Orgwebalchemy."
   (delete-file-recursively "doc")
-  (manifest-shell (list "documenta api ./src/orgwebalchemy && "
+  (manifest-shell (list (~ "documenta api ./src/~a && " project-name)
                         (~ "texi2any -v --html --css-ref=~a" api-docs-css-url)
                         "./doc/api/index.texi"))
   (mv "./index" "./doc/api-dist"))
