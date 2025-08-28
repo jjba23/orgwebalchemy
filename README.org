@@ -22,9 +22,7 @@ https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
 This package provides the ~org-to-html~ function, as its customizable and flexible central functionality, among others.
 
-See the unit tests of this library to understand better how to use it:
-
-[[file:test/orgwebalchemy/org-to-html-test.scm][test/orgwebalchemy/org-to-html-test.scm]]
+See the [[file:test/][tests of this library]] to understand better how to use it.
 
 In a nutshell:
 
