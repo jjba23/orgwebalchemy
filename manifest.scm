@@ -30,6 +30,7 @@
              (gnu packages compression)
              (gnu packages texinfo)
              (gnu packages autotools)
+             (gnu packages rust-apps)
              ((guix licenses)
               #:prefix license:))
 
@@ -64,7 +65,7 @@ runs them concurrently by default to ensure robust testing practices.")
 (packages->manifest (list (specification->package "make") guile-next
                           guile-documenta
                           texinfo
-                          direvent
+                          watchexec
                           guile-veritas
                           guile-ares-rs))
 

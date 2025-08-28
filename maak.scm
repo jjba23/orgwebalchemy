@@ -33,6 +33,8 @@
 (define project-name
   'orgwebalchemy)
 
+(define hot-reload-file-types '(scm))
+
 ;; ====== Maak tasks ======
 
 (define (fmt)
@@ -67,7 +69,14 @@
 
 (define (hot-reload)
   "Hot-reloading developer's setup."
-  ($ '("direvent direvent.conf")))
+  (manifest-shell (list "watchexec 'maak test'"
+                        "--clear"
+                        (~ "--exts ~a"
+                           (string-join (map symbol->string
+                                             hot-reload-file-types) ","))
+                        "--on-busy-update=restart"
+                        "--shell bash"
+                        "--watch .")))
 
 (define (hr)
   "Alias to hot-reloading."
