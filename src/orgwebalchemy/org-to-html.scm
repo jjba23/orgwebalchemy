@@ -80,25 +80,26 @@
 
 ;; Source Blocks (#+BEGIN_SRC ... #+END_SRC)
 
-(define-peg-pattern begin-src none (or "#+BEGIN_SRC" "#+begin_src"))
-(define-peg-pattern end-src none (or "#+END_SRC" "#+end_src"))
+(define-peg-pattern begin-src none
+                    (or "#+BEGIN_SRC" "#+begin_src"))
+(define-peg-pattern end-src none
+                    (or "#+END_SRC" "#+end_src"))
 
 (define-peg-pattern lang all
                     (* (and (not-followed-by nl) peg-any)))
 
 (define-peg-pattern src-block all
-  (and begin-src
-       (+ ws)
-       lang
-       nl
-       block-content
-       end-src
-       (* ws)
-       (or nl eof)))
+                    (and begin-src
+                         (+ ws)
+                         lang
+                         nl
+                         block-content
+                         end-src
+                         (* ws)
+                         (or nl eof)))
 
 (define-peg-pattern block-content all
-  (* (and (not-followed-by end-src) peg-any)))
-
+                    (* (and (not-followed-by end-src) peg-any)))
 
 ;; Paragraphs (Fallback: any line that doesn't start with a special character)
 (define-peg-pattern special-starts none
@@ -113,6 +114,39 @@
 
 ;; =====================================================================
 
+(define (group-list-items ast)
+  (let loop
+    ((rest-nodes ast)
+     (current-list '())
+     (acc '()))
+    (cond
+      ;; 1. We reached the end of the document
+      ((null? rest-nodes)
+       (reverse (if (null? current-list) acc
+                    (cons `(unordered-list ,@(reverse current-list)) acc))))
+
+      ;; 2. Process the next node
+      (else (let ((node (car rest-nodes)))
+              (if (and (pair? node)
+                       (eq? (car node)
+                            'list-item))
+                  ;; A. It's a list item: save it in our current-list bucket and continue
+                  (loop (cdr rest-nodes)
+                        (cons node current-list) acc)
+
+                  ;; B. It's NOT a list item
+                  (if (null? current-list)
+                      ;; B1. We aren't currently tracking a list; just push the node to acc
+                      (loop (cdr rest-nodes)
+                            '()
+                            (cons node acc))
+                      ;; B2. We WERE tracking a list. Close the list, then push the new node
+                      (loop (cdr rest-nodes)
+                            '()
+                            (cons node
+                                  (cons `(unordered-list ,@(reverse
+                                                            current-list)) acc))))))))))
+
 (define (ast->html ast)
   (define (render node)
     (match node
@@ -120,8 +154,17 @@
         ('line-content text))
        (let ((lvl (string-length s)))
          (format #f "<h~a>~a</h~a>" lvl text lvl)))
-      (('list-item "-" ('line-content text))
-       (format #f "  <li>~a</li>" text))
+      (('unordered-list items ...)
+       (let ((li-strings (map (lambda (li)
+                                (match li
+                                  (('list-item "-"
+                                    ('line-content text))
+                                   (format #f "  <li>~a</li>" text))
+                                  (('list-item ('line-content text))
+                                   (format #f "  <li>~a</li>" text))
+                                  (_ ""))) items)))
+         (format #f "<ul>\n~a\n</ul>"
+                 (string-join li-strings "\n"))))
       (('paragraph ('line-content text))
        (format #f "<p>~a</p>" text))
       (_ "")))
@@ -135,7 +178,7 @@
 (define (org-to-html str)
   "Convert a Org-mode string into HTML."
   (let* ((match-result (match-pattern org-doc str))
-         (ast (peg:tree match-result)))
+         (ast (group-list-items (peg:tree match-result))))
     (display "--- Parsing Org Text ---\n")
     (pretty-print ast)
     (ast->html ast)))
