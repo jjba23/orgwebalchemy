@@ -167,6 +167,8 @@
                  (string-join li-strings "\n"))))
       (('paragraph ('line-content text))
        (format #f "<p>~a</p>" text))
+      (('src-block ('lang l) ('block-content bc))
+       (format #f "<pre class=\"~a\">\n~a</pre>" l bc))
       (_ "")))
 
   (string-join (map render ast) "\n"))
