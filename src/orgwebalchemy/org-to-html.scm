@@ -236,21 +236,20 @@
 ;;
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
-(define-peg-pattern link-sep none "][" )
+(define-peg-pattern link-sep none "][")
 
 (define-peg-pattern link-target-content all
                     (+ (and (not-followed-by "]]")
                             (not-followed-by "][")
-                            (not-followed-by nl)
-                            peg-any)))
+                            (not-followed-by nl) peg-any)))
 
 (define-peg-pattern link-description-content all
                     (+ (and (not-followed-by "]]")
-                            (not-followed-by nl)
-                            peg-any)))
+                            (not-followed-by nl) peg-any)))
 
 (define-peg-pattern inline-link-with-desc all
-                    (and link-open link-target-content link-sep link-description-content link-close))
+                    (and link-open link-target-content link-sep
+                         link-description-content link-close))
 
 (define-peg-pattern inline-link-no-desc all
                     (and link-open link-target-content link-close))
@@ -382,7 +381,7 @@
 (define (inline->html ast)
   (define (render node)
     (match node
-
+      
       ;; Escaped markup
       (('inline-escape text)
        (escape-html text))
@@ -412,17 +411,18 @@
        (format #f "<u>~a</u>"
                (inline->html (inline-org->ast text))))
 
-;; [[URL][description]]
-     (('inline-link-with-desc ('link-target-content url) ('link-description-content description))
-      (format #f "<a href=\"~a\">~a</a>"
-              (escape-html url)
-              (inline->html (inline-org->ast description))))
+      ;; [[URL][description]]
+      (('inline-link-with-desc ('link-target-content url)
+        ('link-description-content description))
+       (format #f "<a href=\"~a\">~a</a>"
+               (escape-html url)
+               (inline->html (inline-org->ast description))))
 
-     ;; [[URL]]
-     (('inline-link-no-desc  ('link-target-content url))
-      (format #f "<a href=\"~a\">~a</a>"
-              (escape-html url)
-              (escape-html url)))
+      ;; [[URL]]
+      (('inline-link-no-desc ('link-target-content url))
+       (format #f "<a href=\"~a\">~a</a>"
+               (escape-html url)
+               (escape-html url)))
 
       ;; Plain text
       (('inline-text text)
@@ -449,18 +449,17 @@
                                   (('unordered-item ('desc-key key)
                                     ('line-content text))
                                    (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
-                                           key text))
+                                           (inline->html (inline-org->ast key))
+                                           (inline->html (inline-org->ast text))))
                                   (_ ""))) items)))
          (format #f "<dl>\n~a\n</dl>"
                  (string-join dl-strings "\n"))))
       (('unordered-list items ...)
        (let ((li-strings (map (lambda (li)
                                 (match li
-                                  (('unordered-item "-"
-                                    ('line-content text))
-                                   (format #f "  <li>~a</li>" text))
                                   (('unordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>" text))
+                                   (format #f "  <li>~a</li>"
+                                           (inline->html (inline-org->ast text))))
                                   (_ ""))) items)))
          (format #f "<ul>\n~a\n</ul>"
                  (string-join li-strings "\n"))))
@@ -468,7 +467,8 @@
        (let ((li-strings (map (lambda (li)
                                 (match li
                                   (('ordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>" text))
+                                   (format #f "  <li>~a</li>"
+                                           (inline-org->ast text)))
                                   (_ ""))) items)))
          (format #f "<ol>\n~a\n</ol>"
                  (string-join li-strings "\n"))))
