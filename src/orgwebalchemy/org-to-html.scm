@@ -234,15 +234,27 @@
 ;;   [[https://example.com][Example]]
 ;;   [[https://example.com]]
 ;;
-(define-peg-pattern link-target all
-                    (+ (and (not-followed-by (or "][" "]]" nl)) peg-any)))
+;; Org links:
+(define-peg-pattern link-open none "[[")
+(define-peg-pattern link-close none "]]")
+(define-peg-pattern link-sep none "][" )
 
-(define-peg-pattern link-description all
-                    (+ (and (not-followed-by (or "]]" nl)) peg-any)))
+(define-peg-pattern link-target body
+                    (+ (and (not-followed-by "]]")
+                            (not-followed-by "][")
+                            (not-followed-by nl)
+                            peg-any)))
 
-(define-peg-pattern inline-link all
-                    (and "[[" link-target
-                         (or (and "][" link-description) "") "]]"))
+(define-peg-pattern link-description body
+                    (+ (and (not-followed-by "]]")
+                            (not-followed-by nl)
+                            peg-any)))
+
+(define-peg-pattern inline-link-with-desc all
+                    (and link-open link-target link-sep link-description link-close))
+
+(define-peg-pattern inline-link-no-desc all
+                    (and link-open link-target link-close))
 
 ;; Plain inline text.
 ;;
@@ -261,7 +273,8 @@
 ;; One inline element.
 (define-peg-pattern inline-element body
                     (or inline-escape
-                        inline-link
+                        inline-link-with-desc
+                        inline-link-no-desc
                         inline-code
                         inline-verbatim
                         inline-italic
@@ -406,8 +419,14 @@
                (escape-html url)
                (inline->html (inline-org->ast description))))
 
+      ;; [[URL][description]]
+      (('inline-link-with-desc url description)
+       (format #f "<a href=\"~a\">~a</a>"
+               (escape-html url)
+               (inline->html (inline-org->ast description))))
+
       ;; [[URL]]
-      (('inline-link url)
+      (('inline-link-no-desc url)
        (format #f "<a href=\"~a\">~a</a>"
                (escape-html url)
                (escape-html url)))
@@ -478,7 +497,7 @@
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."
   (let* ((ast (peg:tree (match-pattern inline-content text))))
-    (pretty-print ast) ast))
+    ast))
 
 (define (org->ast str)
   "Convert a Org-mode string into a AST."

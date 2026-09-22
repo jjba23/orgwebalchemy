@@ -53,12 +53,9 @@ Org mode makes it very easy to manage references. Here is a standard link with a
 
 Sometimes you just want to drop a URL directly into your document. Here is a link without a description: [[https://orgmode.org/]]
 
-** Local Files and Internal Links
 You can also link to local files on your system.
 - With description: [[file:~/.emacs.d/init.el][My Emacs config]]
 - Without description: [[file:~/Documents/notes.txt]]
-
-If you want to jump to the top heading of this document, you can click this internal link: [[*Useful Resources and Links][Jump to top]].
 ")
 
 (define org-to-html-suite
