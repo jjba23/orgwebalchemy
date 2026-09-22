@@ -236,23 +236,24 @@
 ;;
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
-(define-peg-pattern link-sep none "][")
+(define-peg-pattern link-sep none "][" )
 
-(define-peg-pattern link-target body
+(define-peg-pattern link-target-content all
                     (+ (and (not-followed-by "]]")
                             (not-followed-by "][")
-                            (not-followed-by nl) peg-any)))
+                            (not-followed-by nl)
+                            peg-any)))
 
-(define-peg-pattern link-description body
+(define-peg-pattern link-description-content all
                     (+ (and (not-followed-by "]]")
-                            (not-followed-by nl) peg-any)))
+                            (not-followed-by nl)
+                            peg-any)))
 
 (define-peg-pattern inline-link-with-desc all
-                    (and link-open link-target link-sep link-description
-                         link-close))
+                    (and link-open link-target-content link-sep link-description-content link-close))
 
 (define-peg-pattern inline-link-no-desc all
-                    (and link-open link-target link-close))
+                    (and link-open link-target-content link-close))
 
 ;; Plain inline text.
 ;;
@@ -411,18 +412,17 @@
        (format #f "<u>~a</u>"
                (inline->html (inline-org->ast text))))
 
-      ;; [[URL][description]]
-      (('inline-link-with-desc url description)
-       (format #t "INLINE LINK WITH DESC")
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (inline->html (inline-org->ast description))))
+;; [[URL][description]]
+     (('inline-link-with-desc ('link-target-content url) ('link-description-content description))
+      (format #f "<a href=\"~a\">~a</a>"
+              (escape-html url)
+              (inline->html (inline-org->ast description))))
 
-      ;; [[URL]]
-      (('inline-link-no-desc url)
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (escape-html url)))
+     ;; [[URL]]
+     (('inline-link-no-desc  ('link-target-content url))
+      (format #f "<a href=\"~a\">~a</a>"
+              (escape-html url)
+              (escape-html url)))
 
       ;; Plain text
       (('inline-text text)
