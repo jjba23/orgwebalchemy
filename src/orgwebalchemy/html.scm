@@ -194,7 +194,7 @@
        `(p ,@(inline-org->sxml (inline-org->ast text))))
 
       (('src-block ('lang l)
-        ('block-content bc))
+        ('src-content bc))
        (let ((lang-class (if (and (string? l)
                                   (not (string-null? l)))
                              (list l)

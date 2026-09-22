@@ -56,6 +56,9 @@
                     (or empty-line
                         heading
                         src-block
+                        quote-block
+                        example-block
+                        export-html-block
                         description-list
                         unordered-list
                         ordered-list
@@ -172,6 +175,65 @@
                     (+ (or nested-ordered-item ordered-item)))
 
 ;; =====================================================================
+;; Fixed-Format / Export Blocks
+;; =====================================================================
+
+;; #+BEGIN_QUOTE ... #+END_QUOTE
+(define-peg-pattern begin-quote none
+                    (or "#+BEGIN_QUOTE" "#+begin_quote"))
+
+(define-peg-pattern end-quote none
+                    (or "#+END_QUOTE" "#+end_quote"))
+
+;; #+BEGIN_EXAMPLE ... #+END_EXAMPLE
+(define-peg-pattern begin-example none
+                    (or "#+BEGIN_EXAMPLE" "#+begin_example"))
+
+(define-peg-pattern end-example none
+                    (or "#+END_EXAMPLE" "#+end_example"))
+
+;; #+BEGIN_EXPORT html ... #+END_EXPORT
+(define-peg-pattern begin-export-html none
+                    (or "#+BEGIN_EXPORT html" "#+begin_export html"
+                        "#+BEGIN_EXPORT HTML" "#+begin_export HTML"))
+
+(define-peg-pattern end-export none
+                    (or "#+END_EXPORT" "#+end_export"))
+
+(define-peg-pattern quote-content all
+                    (* (and (not-followed-by end-quote) peg-any)))
+
+(define-peg-pattern example-content all
+                    (* (and (not-followed-by end-example) peg-any)))
+
+(define-peg-pattern export-html-content all
+                    (* (and (not-followed-by end-export) peg-any)))
+
+(define-peg-pattern quote-block all
+                    (and begin-quote
+                         (or nl eof)
+                         quote-content
+                         end-quote
+                         (* ws)
+                         (or nl eof)))
+
+(define-peg-pattern example-block all
+                    (and begin-example
+                         (or nl eof)
+                         example-content
+                         end-example
+                         (* ws)
+                         (or nl eof)))
+
+(define-peg-pattern export-html-block all
+                    (and begin-export-html
+                         (or nl eof)
+                         export-html-content
+                         end-export
+                         (* ws)
+                         (or nl eof)))
+
+;; =====================================================================
 ;; Source Blocks (#+BEGIN_SRC ... #+END_SRC)
 ;; =====================================================================
 
@@ -188,15 +250,17 @@
                          (+ ws)
                          lang
                          nl
-                         block-content
+                         src-content
                          end-src
                          (* ws)
                          (or nl eof)))
 
-(define-peg-pattern block-content all
+(define-peg-pattern src-content all
                     (* (and (not-followed-by end-src) peg-any)))
 
+;; ======================================================================
 ;; Paragraphs (Fallback: lines not starting with special markup)
+;; ======================================================================
 (define-peg-pattern special-starts none
                     (or "*"
                         "-"

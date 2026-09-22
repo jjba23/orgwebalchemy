@@ -259,6 +259,10 @@ PEGs are great at describing a language.
 
 And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
+------------------------
+
+Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output.
+
 --------------------
 
 * Licensing
