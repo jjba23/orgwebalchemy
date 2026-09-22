@@ -159,7 +159,7 @@ This separation keeps the parser concerned with *syntax* and the renderer concer
 
 Real-world Org syntax contains constructs that cannot safely be parsed by looking at one regular expression in isolation.
 
-For example, a description list:
+For example, a description list (also, think about nested lists and how that would be a nightmare with regex):
 
 #+begin_example
 - name :: Josep
