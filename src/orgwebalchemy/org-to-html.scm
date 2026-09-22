@@ -79,7 +79,10 @@
 (define-peg-pattern stars all
                     (+ "*"))
 
+;; =====================================================================
 ;; List Items & Description Terms
+;; =====================================================================
+
 (define-peg-pattern list-bullet none
                     (or "-" "+"))
 
@@ -92,10 +95,13 @@
                          (+ ws)))
 
 (define-peg-pattern desc-key all
-                    (+ (and (not-followed-by desc-sep) peg-any)))
+  (+ (and (not-followed-by (or nl desc-sep))
+          peg-any)))
 
 (define-peg-pattern desc-body body
-                    (and desc-key desc-sep line-content))
+  (and desc-key
+       desc-sep
+       line-content))
 
 (define-peg-pattern item-content body
                     (or desc-body line-content))
