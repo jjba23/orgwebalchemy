@@ -234,24 +234,22 @@
 ;;   [[https://example.com][Example]]
 ;;   [[https://example.com]]
 ;;
-;; Org links:
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
-(define-peg-pattern link-sep none "][" )
+(define-peg-pattern link-sep none "][")
 
 (define-peg-pattern link-target body
                     (+ (and (not-followed-by "]]")
                             (not-followed-by "][")
-                            (not-followed-by nl)
-                            peg-any)))
+                            (not-followed-by nl) peg-any)))
 
 (define-peg-pattern link-description body
                     (+ (and (not-followed-by "]]")
-                            (not-followed-by nl)
-                            peg-any)))
+                            (not-followed-by nl) peg-any)))
 
 (define-peg-pattern inline-link-with-desc all
-                    (and link-open link-target link-sep link-description link-close))
+                    (and link-open link-target link-sep link-description
+                         link-close))
 
 (define-peg-pattern inline-link-no-desc all
                     (and link-open link-target link-close))
@@ -414,13 +412,8 @@
                (inline->html (inline-org->ast text))))
 
       ;; [[URL][description]]
-      (('inline-link url description)
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (inline->html (inline-org->ast description))))
-
-      ;; [[URL][description]]
       (('inline-link-with-desc url description)
+       (format #t "INLINE LINK WITH DESC")
        (format #f "<a href=\"~a\">~a</a>"
                (escape-html url)
                (inline->html (inline-org->ast description))))
@@ -497,13 +490,17 @@
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."
   (let* ((ast (peg:tree (match-pattern inline-content text))))
-    ast))
+    (newline)
+    (pretty-print ast)
+    (newline) ast))
 
 (define (org->ast str)
   "Convert a Org-mode string into a AST."
   (let* ((match-result (match-pattern org-doc str))
          (ast (group-list-items (peg:tree match-result))))
-    (pretty-print ast) ast))
+    (newline)
+    (pretty-print ast)
+    (newline) ast))
 
 (define (org->html str)
   "Convert a Org-mode string into HTML."
