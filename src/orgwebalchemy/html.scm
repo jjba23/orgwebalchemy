@@ -19,15 +19,23 @@
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
+  #:use-module (srfi srfi-1)
+  #:use-module (sxml simple)
   #:use-module (orgwebalchemy peg)
-  #:export (inline-org->html org->html
+  #:export (inline-org->sxml inline-org->html
+                             org->sxml
+                             org->html
+                             org-ast->sxml
                              org-ast->html
+                             sxml->html-string
                              link-classes
                              code-classes
                              code-block-classes
                              italic-classes
                              bold-classes
                              hr-classes))
+
+;;; Configuration Parameters
 
 (define link-classes
   (make-parameter '()))
@@ -47,141 +55,164 @@
 (define hr-classes
   (make-parameter '()))
 
-(define (escape-html text)
-  (call-with-output-string (lambda (port)
-                             (string-for-each (lambda (char)
-                                                (display (case char
-                                                           ((#\&)
-                                                            "&amp;")
-                                                           ((#\<)
-                                                            "&lt;")
-                                                           ((#\>)
-                                                            "&gt;")
-                                                           ((#\")
-                                                            "&quot;")
-                                                           ((#\')
-                                                            "&#39;")
-                                                           (else (string char)))
-                                                         port)) text))))
+;;; Helper Utilities
 
-(define (inline-org->html ast)
+(define (make-attrs classes extra-attrs)
+  "Construct an SXML (@ ...) attribute node if classes or extra attributes exist."
+  (let ((cls-str (string-join classes " ")))
+    (cond
+      ((and (not (string-null? cls-str))
+            (not (null? extra-attrs)))
+       `((@ (class ,cls-str)
+            ,@extra-attrs)))
+      ((not (string-null? cls-str))
+       `((@ (class ,cls-str))))
+      ((not (null? extra-attrs))
+       `((@ ,@extra-attrs)))
+      (else '()))))
+
+(define (sxml->html-string sxml)
+  "Render an SXML tree or list of SXML nodes to an HTML string."
+  (call-with-output-string (lambda (port)
+                             (if (and (pair? sxml)
+                                      (symbol? (car sxml)))
+                                 (sxml->xml sxml port)
+                                 (sxml->xml `(*TOP* ,@sxml) port)))))
+
+;;; Inline Org -> SXML Transformation
+
+(define (inline-org->sxml ast)
+  "Convert an inline Org AST into a list of SXML nodes."
   (define (render node)
     (match node
-      
       ;; Escaped markup
       (('inline-escape text)
-       (escape-html text))
+       text)
 
       ;; ~code~
       (('inline-code-content text)
-       (let ((classes (string-join (code-classes) " ")))
-         (format #f "<code~a>~a</code>"
-                 (if (string-null? classes) ""
-                     (format #f " class=\"~a\"" classes))
-                 (escape-html text))))
+       `(code ,@(make-attrs (code-classes)
+                            '())
+              ,text))
 
       ;; =verbatim=
       (('inline-verbatim-content text)
-       (let ((classes (string-join (code-classes) " ")))
-         (format #f "<code~a>~a</code>"
-                 (if (string-null? classes) ""
-                     (format #f " class=\"~a\"" classes))
-                 (escape-html text))))
+       `(code ,@(make-attrs (code-classes)
+                            '())
+              ,text))
 
       ;; /italic/
       (('inline-italic-content text)
-       (let ((classes (string-join (italic-classes) " ")))
-         (format #f "<em~a>~a</em>"
-                 (if (string-null? classes) ""
-                     (format #f " class=\"~a\"" classes))
-                 (inline-org->html (inline-org->ast text)))))
+       `(em ,@(make-attrs (italic-classes)
+                          '())
+            ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; *bold*
       (('inline-bold-content text)
-       (format #f "<strong>~a</strong>"
-               (inline-org->html (inline-org->ast text))))
+       `(strong ,@(make-attrs (bold-classes)
+                              '())
+                ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; _underline_
       (('inline-underline-content text)
-       (format #f "<u>~a</u>"
-               (inline-org->html (inline-org->ast text))))
+       `(u ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; [[URL][description]]
       (('inline-link-with-desc ('link-target-content url)
         ('link-description-content description))
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (inline-org->html (inline-org->ast description))))
+       `(a ,@(make-attrs (link-classes)
+                         `((href ,url)))
+           ,@(inline-org->sxml (inline-org->ast description))))
 
       ;; [[URL]]
       (('inline-link-no-desc ('link-target-content url))
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (escape-html url)))
+       `(a ,@(make-attrs (link-classes)
+                         `((href ,url)))
+           ,url))
 
       ;; Plain text
       (('inline-text text)
-       (escape-html text))
+       text)
 
       ;; Raw string fallback
       ((? string? text)
-       (escape-html text))
+       text)
 
-      (_ "")))
+      (_ #f)))
 
-  (string-join (map render ast) ""))
+  (filter-map (lambda (node)
+                (let ((res (render node)))
+                  (if (equal? res "") #f res))) ast))
 
-(define (org-ast->html ast)
+(define (inline-org->html ast)
+  "Convert an inline Org AST into an HTML string."
+  (sxml->html-string (inline-org->sxml ast)))
+
+;;; Block Org AST -> SXML Transformation
+
+(define (org-ast->sxml ast)
+  "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
       (('heading ('stars s)
         ('line-content text))
        (let ((lvl (string-length s)))
-         (format #f "<h~a>~a</h~a>" lvl text lvl)))
+         (let ((tag (string->symbol (format #f "h~a" lvl))))
+           `(,tag ,@(inline-org->sxml (inline-org->ast text))))))
+
       (('description-list items ...)
-       (let ((dl-strings (map (lambda (li)
-                                (match li
-                                  (('unordered-item ('desc-key key)
-                                    ('line-content text))
-                                   (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
-                                           (inline-org->html (inline-org->ast
-                                                              key))
-                                           (inline-org->html (inline-org->ast
-                                                              text))))
-                                  (_ ""))) items)))
-         (format #f "<dl>\n~a\n</dl>"
-                 (string-join dl-strings "\n"))))
+       `(dl ,@(append-map (lambda (li)
+                            (match li
+                              (('unordered-item ('desc-key key)
+                                ('line-content text))
+                               `((dt ,@(inline-org->sxml (inline-org->ast key)))
+                                 (dd ,@(inline-org->sxml (inline-org->ast text)))))
+                              (_ '()))) items)))
+
       (('unordered-list items ...)
-       (let ((li-strings (map (lambda (li)
-                                (match li
-                                  (('unordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>"
-                                           (inline-org->html (inline-org->ast
-                                                              text))))
-                                  (_ ""))) items)))
-         (format #f "<ul>\n~a\n</ul>"
-                 (string-join li-strings "\n"))))
+       `(ul ,@(filter-map (lambda (li)
+                            (match li
+                              (('unordered-item ('line-content text))
+                               `(li ,@(inline-org->sxml (inline-org->ast text))))
+                              (_ #f))) items)))
+
       (('ordered-list items ...)
-       (let ((li-strings (map (lambda (li)
-                                (match li
-                                  (('ordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>"
-                                           (inline-org->html (inline-org->ast
-                                                              text))))
-                                  (_ ""))) items)))
-         (format #f "<ol>\n~a\n</ol>"
-                 (string-join li-strings "\n"))))
+       `(ol ,@(filter-map (lambda (li)
+                            (match li
+                              (('ordered-item ('line-content text))
+                               `(li ,@(inline-org->sxml (inline-org->ast text))))
+                              (_ #f))) items)))
 
       (('paragraph ('line-content text))
-       (format #f "<p>~a</p>"
-               (inline-org->html (inline-org->ast text))))
+       `(p ,@(inline-org->sxml (inline-org->ast text))))
+
       (('src-block ('lang l)
         ('block-content bc))
-       (format #f "<pre class=\"~a\">\n~a</pre>" l bc))
-      (_ "")))
+       (let ((lang-class (if (and (string? l)
+                                  (not (string-null? l)))
+                             (list l)
+                             '())))
+         `(pre ,@(make-attrs (append lang-class
+                                     (code-block-classes))
+                             '())
+               ,bc)))
 
-  (string-join (map render ast) "\n"))
+      (('horizontal-rule)
+       `(hr ,@(make-attrs (hr-classes)
+                          '())))
+
+      (_ #f)))
+
+  (filter-map render ast))
+
+(define (org-ast->html ast)
+  "Convert a document Org AST into an HTML string."
+  (sxml->html-string (org-ast->sxml ast)))
+
+(define (org->sxml str)
+  "Convert an Org-mode string into SXML."
+  (org-ast->sxml (org->ast str)))
 
 (define (org->html str)
-  "Convert a Org-mode string into HTML."
-  (org-ast->html (org->ast str)))
+  "Convert an Org-mode string into an HTML string."
+  (sxml->html-string (org->sxml str)))
