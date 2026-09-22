@@ -48,15 +48,19 @@
 ;; =====================================================================
 ;; Core Document Structure
 ;; =====================================================================
+
 (define-peg-pattern org-doc body
                     (* element))
+
 (define-peg-pattern element body
                     (or empty-line
                         heading
                         src-block
-                        unordered-item
-                        ordered-item
+                        description-list
+                        unordered-list
+                        ordered-list
                         paragraph))
+
 (define-peg-pattern empty-line none
                     (and (* ws) nl))
 
@@ -73,7 +77,7 @@
                     (+ "*"))
 
 ;; =====================================================================
-;; List Items & Description Terms
+;; List Items & Recursive List Containers
 ;; =====================================================================
 
 (define-peg-pattern list-bullet none
@@ -85,30 +89,91 @@
 
 (define-peg-pattern desc-sep none
                     (and (+ ws) "::"
-                         (+ ws)))
+                         (or (+ ws)
+                             (followed-by nl)
+                             (followed-by eof))))
 
 (define-peg-pattern desc-key all
-                    (+ (and (not-followed-by (or nl desc-sep)) peg-any)))
+                    (+ (and (not-followed-by (or nl desc-sep eof)) peg-any)))
 
-(define-peg-pattern desc-body body
-                    (and desc-key desc-sep line-content))
+(define-peg-pattern nested-indent none
+                    (and "  "
+                         (* ws)))
 
-(define-peg-pattern item-content body
-                    (or desc-body line-content))
+;; Nested list wrapper
+(define-peg-pattern sub-list body
+                    (or description-list unordered-list ordered-list))
 
-;; Unordered List Items (- item or + item)
+;; --- Description Lists ---
+
+(define-peg-pattern desc-item all
+                    (and (* ws)
+                         (or list-bullet list-num)
+                         (+ ws)
+                         desc-key
+                         desc-sep
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
+
+(define-peg-pattern nested-desc-item all
+                    (and nested-indent
+                         (or list-bullet list-num)
+                         (+ ws)
+                         desc-key
+                         desc-sep
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
+
+(define-peg-pattern description-list all
+                    (+ (or nested-desc-item desc-item)))
+
+;; --- Unordered Lists ---
+
 (define-peg-pattern unordered-item all
-                    (and list-bullet
-                         (+ ws) item-content
-                         (or nl eof)))
+                    (and (* ws)
+                         list-bullet
+                         (+ ws)
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
 
-;; Ordered List Items (1. item or 1) item)
+(define-peg-pattern nested-unordered-item all
+                    (and nested-indent
+                         list-bullet
+                         (+ ws)
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
+
+(define-peg-pattern unordered-list all
+                    (+ (or nested-unordered-item unordered-item)))
+
+;; --- Ordered Lists ---
+
 (define-peg-pattern ordered-item all
-                    (and list-num
-                         (+ ws) item-content
-                         (or nl eof)))
+                    (and (* ws)
+                         list-num
+                         (+ ws)
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
 
+(define-peg-pattern nested-ordered-item all
+                    (and nested-indent
+                         list-num
+                         (+ ws)
+                         line-content
+                         (or nl eof)
+                         (* sub-list)))
+
+(define-peg-pattern ordered-list all
+                    (+ (or nested-ordered-item ordered-item)))
+
+;; =====================================================================
 ;; Source Blocks (#+BEGIN_SRC ... #+END_SRC)
+;; =====================================================================
 
 (define-peg-pattern begin-src none
                     (or "#+BEGIN_SRC" "#+begin_src"))
@@ -131,10 +196,16 @@
 (define-peg-pattern block-content all
                     (* (and (not-followed-by end-src) peg-any)))
 
-;; Paragraphs (Fallback: any line that doesn't start with a special character)
+;; Paragraphs (Fallback: lines not starting with special markup)
 (define-peg-pattern special-starts none
-                    (or "*" "-" "#+"
+                    (or "*"
+                        "-"
+                        "+"
+                        "#+"
+                        (and (+ digit)
+                             (or "." ")"))
                         (and (* ws) nl)))
+
 (define-peg-pattern paragraph all
                     (and (not-followed-by special-starts) line-content
                          (or nl eof)))
@@ -350,17 +421,20 @@
                                   (cons `(,current-type ,@(reverse
                                                            current-list)) acc))))))))))
 
+;; =====================================================================
+;; Parser Entry Points
+;; =====================================================================
+
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."
-  (let* ((ast (peg:tree (match-pattern inline-content text))))
+  (let ((ast (peg:tree (match-pattern inline-content text))))
     (newline)
     (pretty-print ast)
     (newline) ast))
 
 (define (org->ast str)
-  "Convert a Org-mode string into a AST."
-  (let* ((match-result (match-pattern org-doc str))
-         (ast (group-org-list-items (peg:tree match-result))))
+  "Convert an Org-mode string directly into an AST with nested list structures."
+  (let ((ast (peg:tree (match-pattern org-doc str))))
     (newline)
     (pretty-print ast)
     (newline) ast))

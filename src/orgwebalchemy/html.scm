@@ -163,24 +163,31 @@
       (('description-list items ...)
        `(dl ,@(append-map (lambda (li)
                             (match li
-                              (('unordered-item ('desc-key key)
-                                ('line-content text))
+                              (((or 'unordered-item
+                                    'desc-item)
+                                ('desc-key key)
+                                ('line-content text) sub-nodes ...)
                                `((dt ,@(inline-org->sxml (inline-org->ast key)))
-                                 (dd ,@(inline-org->sxml (inline-org->ast text)))))
+                                 (dd ,@(inline-org->sxml (inline-org->ast text))
+                                     ,@(org-ast->sxml sub-nodes))))
                               (_ '()))) items)))
 
       (('unordered-list items ...)
        `(ul ,@(filter-map (lambda (li)
                             (match li
-                              (('unordered-item ('line-content text))
-                               `(li ,@(inline-org->sxml (inline-org->ast text))))
+                              (('unordered-item ('line-content text) sub-nodes
+                                ...)
+                               `(li ,@(inline-org->sxml (inline-org->ast text))
+                                    ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
       (('ordered-list items ...)
        `(ol ,@(filter-map (lambda (li)
                             (match li
-                              (('ordered-item ('line-content text))
-                               `(li ,@(inline-org->sxml (inline-org->ast text))))
+                              (('ordered-item ('line-content text) sub-nodes
+                                ...)
+                               `(li ,@(inline-org->sxml (inline-org->ast text))
+                                    ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
       (('paragraph ('line-content text))
