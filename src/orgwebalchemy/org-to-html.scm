@@ -49,6 +49,8 @@
                     (or " " "\t"))
 (define-peg-pattern eof none
                     (not-followed-by peg-any))
+(define-peg-pattern digit none
+  (range #\0 #\9))
 
 ;; =====================================================================
 ;; Core Document Structure
@@ -56,7 +58,12 @@
 (define-peg-pattern org-doc body
                     (* element))
 (define-peg-pattern element body
-                    (or empty-line heading src-block list-item paragraph))
+                    (or empty-line
+                        heading
+                        src-block
+                        unordered-item
+                        ordered-item
+                        paragraph))
 (define-peg-pattern empty-line none
                     (and (* ws) nl))
 
@@ -72,10 +79,37 @@
 (define-peg-pattern stars all
                     (+ "*"))
 
-;; Unordered List Items (- item)
-(define-peg-pattern list-item all
-                    (and "-"
-                         (+ ws) line-content
+;; List Items & Description Terms
+(define-peg-pattern list-bullet none
+                    (or "-" "+"))
+
+(define-peg-pattern list-num none
+                    (and (+ digit)
+                         (or "." ")")))
+
+(define-peg-pattern desc-sep none
+                    (and (+ ws) "::"
+                         (+ ws)))
+
+(define-peg-pattern desc-key all
+                    (+ (and (not-followed-by desc-sep) peg-any)))
+
+(define-peg-pattern desc-body body
+                    (and desc-key desc-sep line-content))
+
+(define-peg-pattern item-content body
+                    (or desc-body line-content))
+
+;; Unordered List Items (- item or + item)
+(define-peg-pattern unordered-item all
+                    (and list-bullet
+                         (+ ws) item-content
+                         (or nl eof)))
+
+;; Ordered List Items (1. item or 1) item)
+(define-peg-pattern ordered-item all
+                    (and list-num
+                         (+ ws) item-content
                          (or nl eof)))
 
 ;; Source Blocks (#+BEGIN_SRC ... #+END_SRC)
@@ -114,38 +148,71 @@
 
 ;; =====================================================================
 
+;; =====================================================================
+;; AST Transformation & Grouping
+;; =====================================================================
+
+(define (desc-item? node)
+  "Return #t if NODE contains a description key ('desc-key)."
+  (and (pair? node)
+       (assq 'desc-key
+             (cdr node))))
+
+(define (item-type node)
+  "Determine the list grouping type for a given AST NODE."
+  (cond
+    ((not (pair? node))
+     #f)
+    ((desc-item? node)
+     'description-list)
+    ((eq? (car node)
+          'unordered-item)
+     'unordered-list)
+    ((eq? (car node)
+          'ordered-item)
+     'ordered-list)
+    (else #f)))
+
 (define (group-list-items ast)
+  "Group consecutive list items into unordered-list, ordered-list, or description-list containers."
   (let loop
     ((rest-nodes ast)
      (current-list '())
+     (current-type #f)
      (acc '()))
     (cond
-      ;; 1. We reached the end of the document
+      ;; Reached end of document
       ((null? rest-nodes)
        (reverse (if (null? current-list) acc
-                    (cons `(unordered-list ,@(reverse current-list)) acc))))
+                    (cons `(,current-type ,@(reverse current-list)) acc))))
 
-      ;; 2. Process the next node
-      (else (let ((node (car rest-nodes)))
-              (if (and (pair? node)
-                       (eq? (car node)
-                            'list-item))
-                  ;; A. It's a list item: save it in our current-list bucket and continue
-                  (loop (cdr rest-nodes)
-                        (cons node current-list) acc)
-
-                  ;; B. It's NOT a list item
+      ;; Process next node
+      (else (let* ((node (car rest-nodes))
+                   (type (item-type node)))
+              (if type
+                  ;; Node is a list item
+                  (if (or (not current-type)
+                          (eq? type current-type))
+                      ;; Same list type: keep accumulating
+                      (loop (cdr rest-nodes)
+                            (cons node current-list) type acc)
+                      ;; List type changed: close current list and start new one
+                      (loop (cdr rest-nodes)
+                            (list node) type
+                            (cons `(,current-type ,@(reverse current-list))
+                                  acc)))
+                  ;; Node is not a list item
                   (if (null? current-list)
-                      ;; B1. We aren't currently tracking a list; just push the node to acc
+                      ;; No active list
                       (loop (cdr rest-nodes)
-                            '()
+                            '() #f
                             (cons node acc))
-                      ;; B2. We WERE tracking a list. Close the list, then push the new node
+                      ;; Close active list and record current non-list node
                       (loop (cdr rest-nodes)
-                            '()
+                            '() #f
                             (cons node
-                                  (cons `(unordered-list ,@(reverse
-                                                            current-list)) acc))))))))))
+                                  (cons `(,current-type ,@(reverse
+                                                           current-list)) acc))))))))))
 
 (define (ast->html ast)
   (define (render node)
@@ -165,9 +232,29 @@
                                   (_ ""))) items)))
          (format #f "<ul>\n~a\n</ul>"
                  (string-join li-strings "\n"))))
+      (('ordered-list items ...)
+       (let ((li-strings (map (lambda (li)
+                                (match li
+                                  (('ordered-item ('line-content text))
+                                   (format #f "  <li>~a</li>" text))
+                                  (_ ""))) items)))
+         (format #f "<ol>\n~a\n</ol>"
+                 (string-join li-strings "\n"))))
+
+      (('description-list items ...)
+       (let ((dl-strings (map (lambda (li)
+                                (match li
+                                  ((_ ('desc-key key)
+                                      ('line-content text))
+                                   (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
+                                           key text))
+                                  (_ ""))) items)))
+         (format #f "<dl>\n~a\n</dl>"
+                 (string-join dl-strings "\n"))))
       (('paragraph ('line-content text))
        (format #f "<p>~a</p>" text))
-      (('src-block ('lang l) ('block-content bc))
+      (('src-block ('lang l)
+        ('block-content bc))
        (format #f "<pre class=\"~a\">\n~a</pre>" l bc))
       (_ "")))
 
@@ -177,10 +264,13 @@
 ;; User-facing API
 ;; =====================================================================
 
-(define (org-to-html str)
-  "Convert a Org-mode string into HTML."
+(define (org->ast str)
+  "Convert a Org-mode string into a AST."
   (let* ((match-result (match-pattern org-doc str))
          (ast (group-list-items (peg:tree match-result))))
-    (display "--- Parsing Org Text ---\n")
-    (pretty-print ast)
+    (pretty-print ast) ast))
+
+(define (org-to-html str)
+  "Convert a Org-mode string into HTML."
+  (let* ((ast (org->ast str)))
     (ast->html ast)))
