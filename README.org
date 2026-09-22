@@ -22,7 +22,7 @@ https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
 This package provides among others the ~org->html~ function.
 
-See the [[file:test/][tests of this library]] to understand better how to use it.
+See the [[file:test/][tests of this library]] to understand better how to use it. This library also exposes multiple parameters which can be used to customize behavior and final result (CSS classes for example).
 
 In a simplified way:
 

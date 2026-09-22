@@ -20,7 +20,20 @@
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
   #:use-module (orgwebalchemy peg)
-  #:export (inline-org->html org->html org-ast->html))
+  #:export (inline-org->html org->html org-ast->html
+                             link-classes
+                             code-classes
+                             code-block-classes
+                             italic-classes
+                             bold-classes
+                             hr-classes))
+
+(define link-classes (make-parameter '()))
+(define code-classes (make-parameter '()))
+(define code-block-classes (make-parameter '()))
+(define italic-classes (make-parameter '()))
+(define bold-classes (make-parameter '()))
+(define hr-classes (make-parameter '()))
 
 (define (escape-html text)
   (call-with-output-string (lambda (port)
@@ -42,7 +55,7 @@
 (define (inline-org->html ast)
   (define (render node)
     (match node
-      
+
       ;; Escaped markup
       (('inline-escape text)
        (escape-html text))
