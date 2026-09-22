@@ -15,9 +15,9 @@
 ;; You should have received a copy of the Lesser GNU General Public License
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (veritas unit org-to-html-spec)
+(define-module (veritas unit html-spec)
   #:use-module (veritas veritas)
-  #:use-module (orgwebalchemy org-to-html))
+  #:use-module (orgwebalchemy html))
 
 (define sample-org-text
   "* Top Level Heading

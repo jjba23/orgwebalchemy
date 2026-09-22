@@ -15,19 +15,11 @@
 ;; You should have received a copy of the Lesser GNU General Public License
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
-(define-module (orgwebalchemy org-to-html)
-  #:use-module (ice-9 time)
-  #:use-module (ice-9 format)
-  #:use-module (ice-9 rdelim)
-  #:use-module (ice-9 textual-ports)
-  #:use-module (ice-9 regex)
+(define-module (orgwebalchemy peg)
   #:use-module (ice-9 match)
-  #:use-module (srfi srfi-1)
-  #:use-module (ice-9 string-fun)
-  #:use-module (ice-9 iconv)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
-  #:export (org->html org->ast inline-org->ast ast->html inline->html))
+  #:export (org->ast inline-org->ast group-org-list-items))
 
 ;; =====================================================================
 ;; Org-mode PEG (Parsing Expression Grammar)
@@ -284,11 +276,12 @@
 (define-peg-pattern inline-content body
                     (* inline-element))
 
+
 ;; =====================================================================
 ;; AST Transformation & Grouping
 ;; =====================================================================
 
-(define (desc-item? node)
+(define (org-list-desc-item? node)
   "Return #t if NODE contains a 'desc-key child."
   (and (pair? node)
        (any (lambda (child)
@@ -297,13 +290,13 @@
                         'desc-key)))
             (cdr node))))
 
-(define (item-type node)
+(define (org-list-item-type node)
   "Determine the list grouping type for NODE."
   (cond
     ((not (pair? node))
      #f)
 
-    ((desc-item? node)
+    ((org-list-desc-item? node)
      'description-list)
 
     ((eq? (car node)
@@ -316,7 +309,7 @@
 
     (else #f)))
 
-(define (group-list-items ast)
+(define (group-org-list-items ast)
   "Group consecutive list items into unordered-list, ordered-list, or description-list containers."
   (let loop
     ((rest-nodes ast)
@@ -331,7 +324,7 @@
 
       ;; Process next node
       (else (let* ((node (car rest-nodes))
-                   (type (item-type node)))
+                   (type (org-list-item-type node)))
               (if type
                   ;; Node is a list item
                   (if (or (not current-type)
@@ -357,135 +350,6 @@
                                   (cons `(,current-type ,@(reverse
                                                            current-list)) acc))))))))))
 
-;; ========================================
-;; HTML
-;; ========================================
-
-(define (escape-html text)
-  (call-with-output-string (lambda (port)
-                             (string-for-each (lambda (char)
-                                                (display (case char
-                                                           ((#\&)
-                                                            "&amp;")
-                                                           ((#\<)
-                                                            "&lt;")
-                                                           ((#\>)
-                                                            "&gt;")
-                                                           ((#\")
-                                                            "&quot;")
-                                                           ((#\')
-                                                            "&#39;")
-                                                           (else (string char)))
-                                                         port)) text))))
-
-(define (inline->html ast)
-  (define (render node)
-    (match node
-      
-      ;; Escaped markup
-      (('inline-escape text)
-       (escape-html text))
-
-      ;; ~code~
-      (('inline-code-content text)
-       (format #f "<code>~a</code>"
-               (escape-html text)))
-
-      ;; =verbatim=
-      (('inline-verbatim-content text)
-       (format #f "<code>~a</code>"
-               (escape-html text)))
-
-      ;; /italic/
-      (('inline-italic-content text)
-       (format #f "<em>~a</em>"
-               (inline->html (inline-org->ast text))))
-
-      ;; *bold*
-      (('inline-bold-content text)
-       (format #f "<strong>~a</strong>"
-               (inline->html (inline-org->ast text))))
-
-      ;; _underline_
-      (('inline-underline-content text)
-       (format #f "<u>~a</u>"
-               (inline->html (inline-org->ast text))))
-
-      ;; [[URL][description]]
-      (('inline-link-with-desc ('link-target-content url)
-        ('link-description-content description))
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (inline->html (inline-org->ast description))))
-
-      ;; [[URL]]
-      (('inline-link-no-desc ('link-target-content url))
-       (format #f "<a href=\"~a\">~a</a>"
-               (escape-html url)
-               (escape-html url)))
-
-      ;; Plain text
-      (('inline-text text)
-       (escape-html text))
-
-      ;; Raw string fallback
-      ((? string? text)
-       (escape-html text))
-
-      (_ "")))
-
-  (string-join (map render ast) ""))
-
-(define (ast->html ast)
-  (define (render node)
-    (match node
-      (('heading ('stars s)
-        ('line-content text))
-       (let ((lvl (string-length s)))
-         (format #f "<h~a>~a</h~a>" lvl text lvl)))
-      (('description-list items ...)
-       (let ((dl-strings (map (lambda (li)
-                                (match li
-                                  (('unordered-item ('desc-key key)
-                                    ('line-content text))
-                                   (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
-                                           (inline->html (inline-org->ast key))
-                                           (inline->html (inline-org->ast text))))
-                                  (_ ""))) items)))
-         (format #f "<dl>\n~a\n</dl>"
-                 (string-join dl-strings "\n"))))
-      (('unordered-list items ...)
-       (let ((li-strings (map (lambda (li)
-                                (match li
-                                  (('unordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>"
-                                           (inline->html (inline-org->ast text))))
-                                  (_ ""))) items)))
-         (format #f "<ul>\n~a\n</ul>"
-                 (string-join li-strings "\n"))))
-      (('ordered-list items ...)
-       (let ((li-strings (map (lambda (li)
-                                (match li
-                                  (('ordered-item ('line-content text))
-                                   (format #f "  <li>~a</li>"
-                                           (inline-org->ast text)))
-                                  (_ ""))) items)))
-         (format #f "<ol>\n~a\n</ol>"
-                 (string-join li-strings "\n"))))
-
-      (('paragraph ('line-content text))
-       (format #f "<p>~a</p>"
-               (inline->html (inline-org->ast text))))
-      (('src-block ('lang l)
-        ('block-content bc))
-       (format #f "<pre class=\"~a\">\n~a</pre>" l bc))
-      (_ "")))
-
-  (string-join (map render ast) "\n"))
-
-;; =====================================================================
-;; User-facing API
-;; =====================================================================
 
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."
@@ -497,12 +361,7 @@
 (define (org->ast str)
   "Convert a Org-mode string into a AST."
   (let* ((match-result (match-pattern org-doc str))
-         (ast (group-list-items (peg:tree match-result))))
+         (ast (group-org-list-items (peg:tree match-result))))
     (newline)
     (pretty-print ast)
     (newline) ast))
-
-(define (org->html str)
-  "Convert a Org-mode string into HTML."
-  (let* ((ast (org->ast str)))
-    (ast->html ast)))

@@ -27,6 +27,7 @@ See the [[file:test/][tests of this library]] to understand better how to use it
 In a simplified way:
 
 #+begin_src scheme
+(use-modules (orgwebalchemy html))
 (org->html "This is ~test~ code.")
 ;; results in:
 ;; "This is <code>test</code> code."
