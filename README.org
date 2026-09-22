@@ -8,7 +8,7 @@
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
 [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
-Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library
+Parse Org-mode documents and convert them with a flexible Lisp (Guile Scheme) library.
 
 If you like my work, please support me by [[https://bmc.link/jjbigorra][buying me a cup of coffee ☕]] so I can continue with a lot of motivation.
 
@@ -20,19 +20,243 @@ https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
 * What OrgWebAlchemy gives you
 
-This package provides among others the ~org->-html~ function, as its customizable and flexible central functionality, among others.
+This package provides among others the ~org->html~ function.
 
 See the [[file:test/][tests of this library]] to understand better how to use it.
 
-In a nutshell:
+In a simplified way:
 
 #+begin_src scheme
 (org->html "This is ~test~ code.")
 ;; results in:
-;; "This is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">test</code> code."
+;; "This is <code>test</code> code."
 #+end_src
 
-All CSS classes being used, as well as the patterns used to find and replace Org syntax are flexible and customizable.
+---------------------------------
+
+** What is a PEG? (Parsing Expression Grammars)
+
+Read a [[https://en.wikipedia.org/wiki/Parsing_expression_grammar][nice explanation of PEG on Wikipedia]] or dive directly into the Guile Scheme ~(ice-9 peg)~ module and accompanying [[https://doc.guix.gnu.org/guile/3.0.9/en/html_node/PEG-Parsing.html][fantastic tutorial by GNU]].
+
+Org mode looks deceptively simple. At first glance, parsing Org seems like a job for a handful of regular expressions:
+
+#+begin_example
+^\\*+ +.*$
+^- +.*$
+^#+BEGIN_SRC
+^#+END_SRC
+#+end_example
+
+For a tiny subset of Org, that can work reasonably well. The thing is, real Org documents are not just collections of lines matching regular expressions.
+
+They contain nested structures, different kinds of lists, source blocks, descriptions, links, inline markup, escaping rules, and syntax where the meaning of a piece of text depends on its surrounding context.
+
+This is where =orgwebalchemy= uses *Parsing Expression Grammars (PEGs)* and their power to parse correctly and convert powerfully to an AST for later rendering (to different formats).
+
+** PEG instead of regex soup
+
+A parser built from increasingly large regular expressions tends to become a collection of special cases. Eventually the regular expressions stop describing the language and start describing the bugs in the parser.
+
+#+begin_example
+if this matches, but not when that follows it,
+unless we are inside a source block,
+except when it is a description,
+and don't consume the newline,
+unless the previous line was a list item...
+#+end_example
+
+PEG gives us a different approach.
+
+Instead of asking:
+
+#+begin_quote
+"Can I find a string that looks vaguely like this?"
+#+end_quote
+
+we describe the structure of the language:
+
+#+begin_quote
+"An Org document consists of elements. An element can be a heading, a
+paragraph, a list item, a source block, or another construct."
+#+end_quote
+
+The grammar becomes executable and testable documentation. This is also thanks to Guile Scheme's great ~(ice-9 peg)~ implementation, which supports traditional formal PEG syntax, but also PEG as S-expressions. Similar things can be achieved in other technologies and implementations, but I argue that not in such elegant fashion.
+
+For example, a simplified grammar can express the structure directly:
+
+#+begin_src scheme
+(define-peg-pattern element body
+  (or empty-line
+      heading
+      src-block
+      unordered-item
+      ordered-item
+      paragraph))
+#+end_src
+
+And a list item can be described in terms of its components:
+
+#+begin_src scheme
+(define-peg-pattern unordered-item all
+  (and list-bullet
+       ws
+       item-content
+       nl))
+#+end_src
+
+This is much closer to the actual language than a regular expression trying to match an entire document.
+
+** PEG gives structure
+
+One of the most important advantages of PEG is that parsing can produce a structured representation of the input.
+
+For example, this:
+
+#+begin_example
+- name :: Joe
+#+end_example
+
+can become something conceptually similar to:
+
+#+begin_src scheme
+(description-list
+ (unordered-item
+  (desc-key "name")
+  (line-content "Joe")))
+#+end_src
+
+The parser is therefore not merely answering:
+
+#+begin_example
+"Does this line match?"
+#+end_example
+
+It is answering:
+
+#+begin_example
+"What is this thing, and what are its parts?"
+#+end_example
+
+Once we have an AST, rendering to HTML, Markdown or others becomes a separate, much simpler problem:
+
+#+begin_example
+Org text
+   |
+   v
+ PEG grammar
+   |
+   v
+ AST
+   |
+   v
+ HTML renderer
+#+end_example
+
+This separation keeps the parser concerned with *syntax* and the renderer concerned with *presentation*.
+
+** Context matters
+
+Real-world Org syntax contains constructs that cannot safely be parsed by looking at one regular expression in isolation.
+
+For example, a description list:
+
+#+begin_example
+- name :: Josep
+- project :: orgwebalchemy
+- language :: Scheme
+#+end_example
+
+must not accidentally consume the following list item as part of the description key.
+
+Similarly, a source block has different parsing rules from ordinary paragraph text:
+
+#+begin_example
+#+BEGIN_SRC scheme
+(display "Hello")
+#+END_SRC
+#+end_example
+
+PEG lets us express these boundaries explicitly.
+
+** PEG is composable
+
+Another reason PEG works particularly well and scales is that grammars can be built from smaller grammars.
+
+We can have one level describing the document:
+
+#+begin_example
+document
+  -> elements
+       -> heading
+       -> paragraph
+       -> list
+       -> source block
+#+end_example
+
+And another level describing inline markup:
+
+#+begin_example
+inline content
+  -> text
+  -> *bold*
+  -> /italic/
+  -> ~code~
+  -> =verbatim=
+  -> _underline_
+  -> [[links]]
+  -> escaped characters
+#+end_example
+
+The block parser does not need to understand every inline construct.
+Likewise, the inline parser does not need to understand headings or lists.
+
+This gives us small, composable grammars instead of one enormous regular
+expression.
+
+** PEG is not magic
+
+Using PEG does not mean that Org mode suddenly becomes easy to parse.
+
+Org is a large language with many historical conventions, and =orgwebalchemy= does its best to comply.
+
+The important difference is that when the grammar grows, we can extend the grammar itself rather than adding another pile of increasingly fragile regular-expression substitutions.
+
+** Why not just use regex?
+
+Regular expressions are still useful.
+
+They are excellent for small, local lexical problems:
+
+- recognizing a simple token;
+- validating a small piece of text;
+- finding a simple pattern;
+- processing already-tokenized data.
+
+The problem starts when regular expressions are used as a substitute for a
+parser.
+
+Once the language contains nesting, alternatives, boundaries, context,
+escaping, and multiple interacting constructs, a collection of regexes
+quickly becomes difficult to reason about.
+
+PEG gives us:
+
+- *explicit grammar* instead of scattered matching rules;
+- *ordered alternatives* instead of ambiguous regex chains;
+- *composition* instead of one giant expression;
+- *boundaries* instead of accidental over-consumption;
+- *structured AST output* instead of strings that need to be reparsed;
+- *maintainability* instead of an ever-growing collection of special cases.
+
+In short:
+
+#+begin_quote
+Regexes are great at recognizing pieces of text.
+
+PEGs are great at describing a language.
+#+end_quote
+
+And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 --------------------
 

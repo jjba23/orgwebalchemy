@@ -370,33 +370,33 @@
 (define (inline->html ast)
   (define (render node)
     (match node
-      
+
       ;; Escaped markup
       (('inline-escape text)
        (escape-html text))
 
       ;; ~code~
-      (('inline-code text)
+      (('inline-code-content text)
        (format #f "<code>~a</code>"
                (escape-html text)))
 
       ;; =verbatim=
-      (('inline-verbatim text)
+      (('inline-verbatim-content text)
        (format #f "<code>~a</code>"
                (escape-html text)))
 
       ;; /italic/
-      (('inline-italic text)
+      (('inline-italic-content text)
        (format #f "<em>~a</em>"
                (inline->html (inline-org->ast text))))
 
       ;; *bold*
-      (('inline-bold text)
+      (('inline-bold-content text)
        (format #f "<strong>~a</strong>"
                (inline->html (inline-org->ast text))))
 
       ;; _underline_
-      (('inline-underline text)
+      (('inline-underline-content text)
        (format #f "<u>~a</u>"
                (inline->html (inline-org->ast text))))
 
