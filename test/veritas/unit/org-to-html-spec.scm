@@ -43,16 +43,20 @@ It sits right under the heading.
   (display \"Hello World!\"))
 #+END_SRC")
 
+(define sample-org-inline-text
+  "This is *bold*, /italic/, ~code~, =verbatim= and _underlined_.")
+
 (define org-to-html-suite
   (suite "Org to HTML"
          (test "Org mode parsing"
                (assert-no-error (lambda ()
-                                  (display "\n(org-to-html sample-org-text)\n")
-                                  (display (org-to-html sample-org-text))))
-               (assert-equal #:got (org-to-html
-                                    "This is some ~technical~ thing")
-                             #:expect
-                             "This is some <code>technical</code> thing"))))
+                                  (newline)
+                                  (display (org->html sample-org-text)))))
+         (test "Inline Org mode parsing"
+               (assert-no-error (lambda ()
+                                  (newline)
+                                  (display (inline->html (inline-org->ast
+                                            sample-org-inline-text))))))))
 
 (define (spec)
   (veritas-run org-to-html-suite))

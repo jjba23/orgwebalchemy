@@ -5,10 +5,10 @@
 #+options: toc:nil num:nil
 
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]  
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
 [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
-Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library 
+Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library
 
 If you like my work, please support me by [[https://bmc.link/jjbigorra][buying me a cup of coffee ☕]] so I can continue with a lot of motivation.
 
@@ -20,16 +20,16 @@ https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
 * What OrgWebAlchemy gives you
 
-This package provides the ~org-to-html~ function, as its customizable and flexible central functionality, among others.
+This package provides among others the ~org->-html~ function, as its customizable and flexible central functionality, among others.
 
 See the [[file:test/][tests of this library]] to understand better how to use it.
 
 In a nutshell:
 
 #+begin_src scheme
-(org-to-html "This is ~test~ code.")
+(org->html "This is ~test~ code.")
 ;; results in:
-;; "This is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">test</code> code." 
+;; "This is <code class=\"bg-stone-200/75 dark:bg-stone-700/75 px-2 py-1 rounded-lg\">test</code> code."
 #+end_src
 
 All CSS classes being used, as well as the patterns used to find and replace Org syntax are flexible and customizable.

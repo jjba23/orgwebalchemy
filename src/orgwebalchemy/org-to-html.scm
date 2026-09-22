@@ -27,7 +27,7 @@
   #:use-module (ice-9 iconv)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
-  #:export (org-to-html))
+  #:export (org->html org->ast inline-org->ast ast->html inline->html))
 
 ;; =====================================================================
 ;; Org-mode PEG (Parsing Expression Grammar)
@@ -95,13 +95,10 @@
                          (+ ws)))
 
 (define-peg-pattern desc-key all
-  (+ (and (not-followed-by (or nl desc-sep))
-          peg-any)))
+                    (+ (and (not-followed-by (or nl desc-sep)) peg-any)))
 
 (define-peg-pattern desc-body body
-  (and desc-key
-       desc-sep
-       line-content))
+                    (and desc-key desc-sep line-content))
 
 (define-peg-pattern item-content body
                     (or desc-body line-content))
@@ -153,6 +150,128 @@
                     (* (and (not-followed-by (or nl eof)) peg-any)))
 
 ;; =====================================================================
+;; Inline Org Markup
+;; =====================================================================
+
+;; Escaped characters
+;;
+;; Org uses a backslash to escape markup characters:
+;;
+;;   \*not bold*
+;;   \_not underline_
+;;   \~not code~
+;;
+(define-peg-pattern inline-escape body
+                    (and "\\" inline-escaped-character))
+
+(define-peg-pattern inline-escaped-character all
+                    (or "*"
+                        "/"
+                        "_"
+                        "~"
+                        "="
+                        "["
+                        "]"
+                        "\\"))
+
+;; Code: ~code~
+(define-peg-pattern inline-code-delimiter none "~")
+
+(define-peg-pattern inline-code-content all
+                    (+ (and (not-followed-by "~")
+                            (not-followed-by nl) peg-any)))
+
+(define-peg-pattern inline-code body
+                    (and inline-code-delimiter inline-code-content
+                         inline-code-delimiter))
+
+;; Verbatim: =verbatim=
+(define-peg-pattern inline-verbatim-delimiter none "=")
+
+(define-peg-pattern inline-verbatim-content all
+                    (+ (and (not-followed-by "=")
+                            (not-followed-by nl) peg-any)))
+
+(define-peg-pattern inline-verbatim body
+                    (and inline-verbatim-delimiter inline-verbatim-content
+                         inline-verbatim-delimiter))
+
+;; Italic: /italic/
+(define-peg-pattern inline-italic-delimiter none "/")
+
+(define-peg-pattern inline-italic-content all
+                    (+ (and (not-followed-by "/")
+                            (not-followed-by nl) peg-any)))
+
+(define-peg-pattern inline-italic body
+                    (and inline-italic-delimiter inline-italic-content
+                         inline-italic-delimiter))
+
+;; Bold: *bold*
+(define-peg-pattern inline-bold-delimiter none "*")
+
+(define-peg-pattern inline-bold-content all
+                    (+ (and (not-followed-by "*")
+                            (not-followed-by nl) peg-any)))
+
+(define-peg-pattern inline-bold body
+                    (and inline-bold-delimiter inline-bold-content
+                         inline-bold-delimiter))
+
+;; Underline: _underline_
+(define-peg-pattern inline-underline-delimiter none "_")
+
+(define-peg-pattern inline-underline-content all
+                    (+ (and (not-followed-by "_")
+                            (not-followed-by nl) peg-any)))
+
+(define-peg-pattern inline-underline body
+                    (and inline-underline-delimiter inline-underline-content
+                         inline-underline-delimiter))
+
+;; Org links:
+;;
+;;   [[https://example.com][Example]]
+;;   [[https://example.com]]
+;;
+(define-peg-pattern link-target all
+                    (+ (and (not-followed-by (or "][" "]]" nl)) peg-any)))
+
+(define-peg-pattern link-description all
+                    (+ (and (not-followed-by (or "]]" nl)) peg-any)))
+
+(define-peg-pattern inline-link all
+                    (and "[[" link-target
+                         (or (and "][" link-description) "") "]]"))
+
+;; Plain inline text.
+;;
+;; Stop before the beginning of any inline construct.
+(define-peg-pattern inline-text all
+                    (+ (and (not-followed-by (or "\\"
+                                                 "~"
+                                                 "="
+                                                 "/"
+                                                 "*"
+                                                 "_"
+                                                 "[["
+                                                 nl
+                                                 eof)) peg-any)))
+
+;; One inline element.
+(define-peg-pattern inline-element body
+                    (or inline-escape
+                        inline-link
+                        inline-code
+                        inline-verbatim
+                        inline-italic
+                        inline-bold
+                        inline-underline
+                        inline-text))
+
+;; A complete inline sequence.
+(define-peg-pattern inline-content body
+                    (* inline-element))
 
 ;; =====================================================================
 ;; AST Transformation & Grouping
@@ -227,6 +346,84 @@
                                   (cons `(,current-type ,@(reverse
                                                            current-list)) acc))))))))))
 
+;; ========================================
+;; HTML
+;; ========================================
+
+(define (escape-html text)
+  (call-with-output-string (lambda (port)
+                             (string-for-each (lambda (char)
+                                                (display (case char
+                                                           ((#\&)
+                                                            "&amp;")
+                                                           ((#\<)
+                                                            "&lt;")
+                                                           ((#\>)
+                                                            "&gt;")
+                                                           ((#\")
+                                                            "&quot;")
+                                                           ((#\')
+                                                            "&#39;")
+                                                           (else (string char)))
+                                                         port)) text))))
+
+(define (inline->html ast)
+  (define (render node)
+    (match node
+      
+      ;; Escaped markup
+      (('inline-escape text)
+       (escape-html text))
+
+      ;; ~code~
+      (('inline-code text)
+       (format #f "<code>~a</code>"
+               (escape-html text)))
+
+      ;; =verbatim=
+      (('inline-verbatim text)
+       (format #f "<code>~a</code>"
+               (escape-html text)))
+
+      ;; /italic/
+      (('inline-italic text)
+       (format #f "<em>~a</em>"
+               (inline->html (inline-org->ast text))))
+
+      ;; *bold*
+      (('inline-bold text)
+       (format #f "<strong>~a</strong>"
+               (inline->html (inline-org->ast text))))
+
+      ;; _underline_
+      (('inline-underline text)
+       (format #f "<u>~a</u>"
+               (inline->html (inline-org->ast text))))
+
+      ;; [[URL][description]]
+      (('inline-link url description)
+       (format #f "<a href=\"~a\">~a</a>"
+               (escape-html url)
+               (inline->html (inline-org->ast description))))
+
+      ;; [[URL]]
+      (('inline-link url)
+       (format #f "<a href=\"~a\">~a</a>"
+               (escape-html url)
+               (escape-html url)))
+
+      ;; Plain text
+      (('inline-text text)
+       (escape-html text))
+
+      ;; Raw string fallback
+      ((? string? text)
+       (escape-html text))
+
+      (_ "")))
+
+  (string-join (map render ast) ""))
+
 (define (ast->html ast)
   (define (render node)
     (match node
@@ -238,7 +435,7 @@
        (let ((dl-strings (map (lambda (li)
                                 (match li
                                   (('unordered-item ('desc-key key)
-                                      ('line-content text))
+                                    ('line-content text))
                                    (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
                                            key text))
                                   (_ ""))) items)))
@@ -265,7 +462,8 @@
                  (string-join li-strings "\n"))))
 
       (('paragraph ('line-content text))
-       (format #f "<p>~a</p>" text))
+       (format #f "<p>~a</p>"
+               (inline->html (inline-org->ast text))))
       (('src-block ('lang l)
         ('block-content bc))
        (format #f "<pre class=\"~a\">\n~a</pre>" l bc))
@@ -277,13 +475,18 @@
 ;; User-facing API
 ;; =====================================================================
 
+(define (inline-org->ast text)
+  "Parse inline Org markup in TEXT."
+  (let* ((ast (peg:tree (match-pattern inline-content text))))
+    (pretty-print ast) ast))
+
 (define (org->ast str)
   "Convert a Org-mode string into a AST."
   (let* ((match-result (match-pattern org-doc str))
          (ast (group-list-items (peg:tree match-result))))
     (pretty-print ast) ast))
 
-(define (org-to-html str)
+(define (org->html str)
   "Convert a Org-mode string into HTML."
   (let* ((ast (org->ast str)))
     (ast->html ast)))
