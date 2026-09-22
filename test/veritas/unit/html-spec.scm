@@ -48,15 +48,24 @@ It sits right under the heading.
   "This is *bold*, /italic/, ~code~, =verbatim= and _underlined_.")
 
 (define sample-org-links
-  "* Useful Resources and Links
-
-Org mode makes it very easy to manage references. Here is a standard link with a description pointing to a search engine: [[https://duckduckgo.com][DuckDuckGo]].
-
-Sometimes you just want to drop a URL directly into your document. Here is a link without a description: [[https://orgmode.org/]]
+  "Sometimes you just want to drop a URL directly into your document. Here is a link without a description: [[https://orgmode.org/]]
 
 You can also link to local files on your system.
 - With description: [[file:~/.emacs.d/init.el][My Emacs config]]
 - Without description: [[file:~/Documents/notes.txt]]
+
+#+begin_example
+* Verbatim content
+- Do not parse
+#+end_example
+
+#+begin_quote
+IN VINO VERITAS IN AQUA SANITAS
+#+end_quote
+
+#+begin_export html
+<strong><p>HELLO WORLD</p></strong>
+#+end_export
 ")
 
 (define org-to-html-suite

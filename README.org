@@ -261,9 +261,27 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 ------------------------
 
-Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output.
+* Supported Org features
+
+- Headings (lines  starting by n ~*~)
+- Paragraphs (any "non-special" text)
+- Unordered, Ordered and Description lists
+- Nested lists
+- Italic, Bold, Inline Code
+- Links with and without description (with nested parsing)
+- ~#+begin_src~
+- ~#+begin_example~
+- ~#+begin_quote~ (with nested parsing)
+- ~#+begin_export html~ : Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output.
 
 --------------------
+
+
+* Projects that use Orgwebalchemy
+
+- LucidPlan :: https://codeberg.org/jjba23/lucidplan
+
+--------------
 
 * Licensing
 
@@ -276,12 +294,6 @@ The documentation and examples, including this document, which are provided with
 https://www.gnu.org/licenses/fdl-1.3.html
 
 ---------
-
-* Projects that use Orgwebalchemy
-
-- LucidPlan :: https://codeberg.org/jjba23/lucidplan
-
---------------
 
 * Installing and using
 

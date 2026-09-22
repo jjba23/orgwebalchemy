@@ -72,12 +72,35 @@
       (else '()))))
 
 (define (sxml->html-string sxml)
-  "Render an SXML tree or list of SXML nodes to an HTML string."
+  "Render an SXML tree or list of SXML nodes to an HTML string,
+preserving raw HTML nodes."
+  (define (render-node node port)
+    (match node
+      ;; Raw HTML is emitted without escaping.
+      (('raw-html html)
+       (display html port))
+
+      ;; Nested list of SXML nodes.
+      ((? pair?)
+       (if (and (pair? node)
+                (symbol? (car node)))
+           (sxml->xml node port)
+           (for-each (lambda (child)
+                       (render-node child port)) node)))
+
+      ;; Strings are emitted literally here. SXML handles escaping
+      ;; when they occur inside ordinary elements.
+      (_ (display node port))))
+
   (call-with-output-string (lambda (port)
                              (if (and (pair? sxml)
                                       (symbol? (car sxml)))
-                                 (sxml->xml sxml port)
-                                 (sxml->xml `(*TOP* ,@sxml) port)))))
+                                 (let ((children (cdr sxml)))
+                                   (for-each (lambda (child)
+                                               (render-node child port))
+                                             children))
+                                 (for-each (lambda (node)
+                                             (render-node node port)) sxml)))))
 
 ;;; Inline Org -> SXML Transformation
 
@@ -154,12 +177,15 @@
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
+      
+      ;; Headings
       (('heading ('stars s)
         ('line-content text))
        (let ((lvl (string-length s)))
          (let ((tag (string->symbol (format #f "h~a" lvl))))
            `(,tag ,@(inline-org->sxml (inline-org->ast text))))))
 
+      ;; Description lists
       (('description-list items ...)
        `(dl ,@(append-map (lambda (li)
                             (match li
@@ -172,6 +198,7 @@
                                      ,@(org-ast->sxml sub-nodes))))
                               (_ '()))) items)))
 
+      ;; Unordered lists
       (('unordered-list items ...)
        `(ul ,@(filter-map (lambda (li)
                             (match li
@@ -181,6 +208,7 @@
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
+      ;; Ordered lists
       (('ordered-list items ...)
        `(ol ,@(filter-map (lambda (li)
                             (match li
@@ -190,9 +218,11 @@
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
+      ;; Paragraph
       (('paragraph ('line-content text))
        `(p ,@(inline-org->sxml (inline-org->ast text))))
 
+      ;; Source block
       (('src-block ('lang l)
         ('src-content bc))
        (let ((lang-class (if (and (string? l)
@@ -204,6 +234,29 @@
                              '())
                ,bc)))
 
+      ;; Quote block
+      ;;
+      ;; Quote text is regular Org content, so inline markup
+      ;; should still be interpreted.
+      (('quote-block ('quote-content text))
+       `(blockquote ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; Example block
+      ;;
+      ;; Example contents are literal. Do not parse them as Org.
+      (('example-block ('example-content text))
+       `(pre ,@(make-attrs (code-block-classes)
+                           '())
+             ,text))
+
+      ;; HTML export block
+      ;;
+      ;; The contents are already HTML. Mark them as raw so that
+      ;; they are not escaped or interpreted as Org markup.
+      (('export-html-block ('export-html-content html))
+       `(raw-html ,html))
+
+      ;; Horizontal rule
       (('horizontal-rule)
        `(hr ,@(make-attrs (hr-classes)
                           '())))
