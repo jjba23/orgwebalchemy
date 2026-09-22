@@ -20,7 +20,8 @@
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
   #:use-module (orgwebalchemy peg)
-  #:export (inline-org->html org->html org-ast->html
+  #:export (inline-org->html org->html
+                             org-ast->html
                              link-classes
                              code-classes
                              code-block-classes
@@ -28,12 +29,23 @@
                              bold-classes
                              hr-classes))
 
-(define link-classes (make-parameter '()))
-(define code-classes (make-parameter '()))
-(define code-block-classes (make-parameter '()))
-(define italic-classes (make-parameter '()))
-(define bold-classes (make-parameter '()))
-(define hr-classes (make-parameter '()))
+(define link-classes
+  (make-parameter '()))
+
+(define code-classes
+  (make-parameter '()))
+
+(define code-block-classes
+  (make-parameter '()))
+
+(define italic-classes
+  (make-parameter '()))
+
+(define bold-classes
+  (make-parameter '()))
+
+(define hr-classes
+  (make-parameter '()))
 
 (define (escape-html text)
   (call-with-output-string (lambda (port)
@@ -55,25 +67,34 @@
 (define (inline-org->html ast)
   (define (render node)
     (match node
-
+      
       ;; Escaped markup
       (('inline-escape text)
        (escape-html text))
 
       ;; ~code~
       (('inline-code-content text)
-       (format #f "<code>~a</code>"
-               (escape-html text)))
+       (let ((classes (string-join (code-classes) " ")))
+         (format #f "<code~a>~a</code>"
+                 (if (string-null? classes) ""
+                     (format #f " class=\"~a\"" classes))
+                 (escape-html text))))
 
       ;; =verbatim=
       (('inline-verbatim-content text)
-       (format #f "<code>~a</code>"
-               (escape-html text)))
+       (let ((classes (string-join (code-classes) " ")))
+         (format #f "<code~a>~a</code>"
+                 (if (string-null? classes) ""
+                     (format #f " class=\"~a\"" classes))
+                 (escape-html text))))
 
       ;; /italic/
       (('inline-italic-content text)
-       (format #f "<em>~a</em>"
-               (inline-org->html (inline-org->ast text))))
+       (let ((classes (string-join (italic-classes) " ")))
+         (format #f "<em~a>~a</em>"
+                 (if (string-null? classes) ""
+                     (format #f " class=\"~a\"" classes))
+                 (inline-org->html (inline-org->ast text)))))
 
       ;; *bold*
       (('inline-bold-content text)
@@ -145,7 +166,8 @@
                                 (match li
                                   (('ordered-item ('line-content text))
                                    (format #f "  <li>~a</li>"
-                                           (inline-org->ast text)))
+                                           (inline-org->html (inline-org->ast
+                                                              text))))
                                   (_ ""))) items)))
          (format #f "<ol>\n~a\n</ol>"
                  (string-join li-strings "\n"))))
