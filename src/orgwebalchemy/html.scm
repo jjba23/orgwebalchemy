@@ -42,7 +42,7 @@
 (define (inline-org->html ast)
   (define (render node)
     (match node
-
+      
       ;; Escaped markup
       (('inline-escape text)
        (escape-html text))

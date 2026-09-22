@@ -19,6 +19,7 @@
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
+  #:use-module (srfi srfi-1)
   #:export (org->ast inline-org->ast group-org-list-items))
 
 ;; =====================================================================
@@ -276,7 +277,6 @@
 (define-peg-pattern inline-content body
                     (* inline-element))
 
-
 ;; =====================================================================
 ;; AST Transformation & Grouping
 ;; =====================================================================
@@ -349,7 +349,6 @@
                             (cons node
                                   (cons `(,current-type ,@(reverse
                                                            current-list)) acc))))))))))
-
 
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."

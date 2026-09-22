@@ -17,6 +17,7 @@
 
 (define-module (veritas unit html-spec)
   #:use-module (veritas veritas)
+  #:use-module (orgwebalchemy peg)
   #:use-module (orgwebalchemy html))
 
 (define sample-org-text
@@ -67,8 +68,8 @@ You can also link to local files on your system.
          (test "Inline Org mode parsing"
                (assert-no-error (lambda ()
                                   (newline)
-                                  (display (inline->html (inline-org->ast
-                                                          sample-org-inline-text))))))
+                                  (display (inline-org->html (inline-org->ast
+                                                              sample-org-inline-text))))))
          (test "Inline Org link parsing"
                (assert-no-error (lambda ()
                                   (newline)
