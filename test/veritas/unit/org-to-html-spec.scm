@@ -28,6 +28,16 @@ It sits right under the heading.
 - First list item
 - Second list item
 
+*** An ordered subheading
+1) yes buddy
+2) another item
+
+** Another
+- key :: val
+- desc :: conte
+
+/In Vino Veritas/ but /In Aqua Sanitas/
+
 #+BEGIN_SRC scheme
 (define (hello)
   (display \"Hello World!\"))

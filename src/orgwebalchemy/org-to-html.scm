@@ -50,7 +50,7 @@
 (define-peg-pattern eof none
                     (not-followed-by peg-any))
 (define-peg-pattern digit none
-  (range #\0 #\9))
+                    (range #\0 #\9))
 
 ;; =====================================================================
 ;; Core Document Structure
@@ -153,24 +153,31 @@
 ;; =====================================================================
 
 (define (desc-item? node)
-  "Return #t if NODE contains a description key ('desc-key)."
+  "Return #t if NODE contains a 'desc-key child."
   (and (pair? node)
-       (assq 'desc-key
-             (cdr node))))
+       (any (lambda (child)
+              (and (pair? child)
+                   (eq? (car child)
+                        'desc-key)))
+            (cdr node))))
 
 (define (item-type node)
-  "Determine the list grouping type for a given AST NODE."
+  "Determine the list grouping type for NODE."
   (cond
     ((not (pair? node))
      #f)
+
     ((desc-item? node)
      'description-list)
+
     ((eq? (car node)
           'unordered-item)
      'unordered-list)
+
     ((eq? (car node)
           'ordered-item)
      'ordered-list)
+
     (else #f)))
 
 (define (group-list-items ast)
@@ -221,13 +228,23 @@
         ('line-content text))
        (let ((lvl (string-length s)))
          (format #f "<h~a>~a</h~a>" lvl text lvl)))
+      (('description-list items ...)
+       (let ((dl-strings (map (lambda (li)
+                                (match li
+                                  (('unordered-item ('desc-key key)
+                                      ('line-content text))
+                                   (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
+                                           key text))
+                                  (_ ""))) items)))
+         (format #f "<dl>\n~a\n</dl>"
+                 (string-join dl-strings "\n"))))
       (('unordered-list items ...)
        (let ((li-strings (map (lambda (li)
                                 (match li
-                                  (('list-item "-"
+                                  (('unordered-item "-"
                                     ('line-content text))
                                    (format #f "  <li>~a</li>" text))
-                                  (('list-item ('line-content text))
+                                  (('unordered-item ('line-content text))
                                    (format #f "  <li>~a</li>" text))
                                   (_ ""))) items)))
          (format #f "<ul>\n~a\n</ul>"
@@ -241,16 +258,6 @@
          (format #f "<ol>\n~a\n</ol>"
                  (string-join li-strings "\n"))))
 
-      (('description-list items ...)
-       (let ((dl-strings (map (lambda (li)
-                                (match li
-                                  ((_ ('desc-key key)
-                                      ('line-content text))
-                                   (format #f "  <dt>~a</dt>\n  <dd>~a</dd>"
-                                           key text))
-                                  (_ ""))) items)))
-         (format #f "<dl>\n~a\n</dl>"
-                 (string-join dl-strings "\n"))))
       (('paragraph ('line-content text))
        (format #f "<p>~a</p>" text))
       (('src-block ('lang l)
