@@ -70,14 +70,17 @@ IN VINO VERITAS IN AQUA SANITAS
 | Bob   | 25  | Berlin |
 ")
 
+(define org-table-suite
+  (suite "Org tables"
+         (test "Org table parsing"
+               (assert-no-error (lambda ()
+                                  (display (org->html sample-org-table)))))))
+
 (define org-to-html-suite
   (suite "Org to HTML"
          (test "Org mode parsing"
                (assert-no-error (lambda ()
                                   (display (org->html sample-org-text)))))
-         (test "Org table parsing"
-               (assert-no-error (lambda ()
-                                  (display (org->html sample-org-table)))))
          (test "Org blocks parsing"
                (assert-no-error (lambda ()
                                   (display (org->html sample-org-blocks)))))))
@@ -145,4 +148,5 @@ IN VINO VERITAS IN AQUA SANITAS
                              #:expect '()))))
 
 (define (spec)
-  (veritas-run org-to-html-suite make-sxml-attrs-suite inline-org-suite))
+  (veritas-run org-to-html-suite make-sxml-attrs-suite inline-org-suite
+               org-table-suite))

@@ -38,7 +38,12 @@
                              bold-classes
                              heading-classes
                              underline-classes
-                             separator-classes))
+                             separator-classes
+                             table-classes
+                             table-header-row-classes
+                             table-header-cell-classes
+                             table-row-classes
+                             table-cell-classes))
 
 ;;; Configuration Parameters
 
@@ -70,6 +75,21 @@
   (make-parameter '()))
 
 (define underline-classes
+  (make-parameter '()))
+
+(define table-classes
+  (make-parameter '()))
+
+(define table-header-row-classes
+  (make-parameter '()))
+
+(define table-header-cell-classes
+  (make-parameter '()))
+
+(define table-row-classes
+  (make-parameter '()))
+
+(define table-cell-classes
   (make-parameter '()))
 
 (define heading-classes
@@ -244,8 +264,7 @@ preserving raw HTML nodes."
               (tag (string->symbol (format #f "h~a" lvl)))
               (classes ((heading-classes)
                         lvl)))
-         `(,tag ,@(make-sxml-attrs classes
-                                   '())
+         `(,tag ,@(make-sxml-attrs classes)
            ,@(inline-org->sxml (inline-org->ast text)))))
 
       ;; Horizontal Separator
@@ -298,8 +317,7 @@ preserving raw HTML nodes."
                              (list l)
                              '())))
          `(pre ,@(make-sxml-attrs (append lang-class
-                                          (code-block-classes))
-                                  '())
+                                          (code-block-classes)))
                ,bc)))
 
       ;; Quote block
@@ -314,8 +332,7 @@ preserving raw HTML nodes."
       ;;
       ;; Example contents are literal. Do not parse them as Org.
       (('example-block ('example-content text))
-       `(pre ,@(make-sxml-attrs (example-block-classes)
-                                '())
+       `(pre ,@(make-sxml-attrs (example-block-classes))
              ,text))
 
       ;; HTML export block
@@ -327,9 +344,32 @@ preserving raw HTML nodes."
 
       ;; Horizontal rule
       (('horizontal-rule)
-       `(hr ,@(make-sxml-attrs (separator-classes)
-                               '())))
+       `(hr ,@(make-sxml-attrs (separator-classes))))
 
+      ;; Tables
+      (('table items ...)
+       `(table ,(make-sxml-attrs (table-classes))
+               ,@(org-ast->sxml items)))
+
+      (('table-header-row items ...)
+       `(thead (tr ,(make-sxml-attrs (table-header-row-classes))
+                   ,@(map (lambda (cell)
+                            (match cell
+                              (('table-cell text)
+                               `(th ,(make-sxml-attrs (table-header-cell-classes))
+                                    ,@(inline-org->sxml (inline-org->ast text))))
+                              (_ #f))) items))))
+
+      (('table-row items ...)
+       `(tbody (tr ,(make-sxml-attrs (table-row-classes))
+                   ,@(map (lambda (cell)
+                            (match cell
+                              (('table-cell text)
+                               `(td ,(make-sxml-attrs (table-cell-classes))
+                                    ,@(inline-org->sxml (inline-org->ast text))))
+                              (_ #f))) items))))
+
+      ;; fallback when no match found
       (_ #f)))
 
   (let ((nodes (cond
