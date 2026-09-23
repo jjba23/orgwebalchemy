@@ -30,11 +30,13 @@
                              sxml->html-string
                              link-classes
                              code-classes
+                             make-sxml-attrs
                              code-block-classes
                              quote-block-classes
                              example-block-classes
                              italic-classes
                              bold-classes
+                             heading-classes
                              underline-classes
                              separator-classes))
 
@@ -70,11 +72,35 @@
 (define underline-classes
   (make-parameter '()))
 
+(define heading-classes
+  ;; heading-classes is a more complex item, as it handles multiple header levels
+  ;; and can be customized as so:
+  ;;
+  ;; (heading-classes
+  ;; (lambda (level)
+  ;; (case level
+  ;; ((1) '("text-4xl" "font-bold" "mb-4"))
+  ;; ((2) '("text-2xl" "font-semibold" "mb-3"))
+  ;; ((3) '("text-xl" "font-medium" "mb-2"))
+  ;; (else '("text-base" "font-normal")))))
+  ;;
+  ;; or:
+  ;; (heading-classes
+  ;; (lambda (level)
+  ;; (list (format #f "org-heading-lvl-~a" level) "header-element")))
+  ;;
+  ;; defaults to a procedure taking the heading level (integer)
+  ;; and returning an empty list of classes.
+  (make-parameter (lambda _
+                    '())))
+
 ;;; Helper Utilities
 
-(define (make-attrs classes extra-attrs)
+(define* (make-sxml-attrs classes
+                          #:optional (extra-attrs '()))
   "Construct an SXML (@ ...) attribute node if classes or extra attributes exist."
-  (let ((cls-str (string-join classes " ")))
+  (let ((cls-str (string-join (map (lambda (c)
+                                     (format #f "~a" c)) classes) " ")))
     (cond
       ((and (not (string-null? cls-str))
             (not (null? extra-attrs)))
@@ -108,14 +134,23 @@ preserving raw HTML nodes."
       (_ (display node port))))
 
   (call-with-output-string (lambda (port)
-                             (if (and (pair? sxml)
-                                      (symbol? (car sxml)))
-                                 (let ((children (cdr sxml)))
-                                   (for-each (lambda (child)
-                                               (render-node child port))
-                                             children))
-                                 (for-each (lambda (node)
-                                             (render-node node port)) sxml)))))
+                             (cond
+                               ;; Strip *TOP* wrapper if it exists
+                               ((and (pair? sxml)
+                                     (eq? (car sxml)
+                                          '*TOP*))
+                                (for-each (lambda (child)
+                                            (render-node child port))
+                                          (cdr sxml)))
+
+                               ;; It's a single valid SXML node
+                               ((and (pair? sxml)
+                                     (symbol? (car sxml)))
+                                (render-node sxml port))
+
+                               ;; It's a list of nodes -> render each
+                               (else (for-each (lambda (node)
+                                                 (render-node node port)) sxml))))))
 
 ;;; Inline Org -> SXML Transformation
 
@@ -129,44 +164,44 @@ preserving raw HTML nodes."
 
       ;; ~code~
       (('inline-code-content text)
-       `(code ,@(make-attrs (code-classes)
-                            '())
+       `(code ,@(make-sxml-attrs (code-classes)
+                                 '())
               ,text))
 
       ;; =verbatim=
       (('inline-verbatim-content text)
-       `(code ,@(make-attrs (code-classes)
-                            '())
+       `(code ,@(make-sxml-attrs (code-classes)
+                                 '())
               ,text))
 
       ;; /italic/
       (('inline-italic-content text)
-       `(em ,@(make-attrs (italic-classes)
-                          '())
+       `(em ,@(make-sxml-attrs (italic-classes)
+                               '())
             ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; *bold*
       (('inline-bold-content text)
-       `(strong ,@(make-attrs (bold-classes)
-                              '())
+       `(strong ,@(make-sxml-attrs (bold-classes)
+                                   '())
                 ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; _underline_
       (('inline-underline-content text)
-       `(u ,@(make-attrs (underline-classes))
+       `(u ,@(make-sxml-attrs (underline-classes))
            ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; [[URL][description]]
       (('inline-link-with-desc ('link-target-content url)
         ('link-description-content description))
-       `(a ,@(make-attrs (link-classes)
-                         `((href ,url)))
+       `(a ,@(make-sxml-attrs (link-classes)
+                              `((href ,url)))
            ,@(inline-org->sxml (inline-org->ast description))))
 
       ;; [[URL]]
       (('inline-link-no-desc ('link-target-content url))
-       `(a ,@(make-attrs (link-classes)
-                         `((href ,url)))
+       `(a ,@(make-sxml-attrs (link-classes)
+                              `((href ,url)))
            ,url))
 
       ;; Plain text
@@ -179,9 +214,17 @@ preserving raw HTML nodes."
 
       (_ #f)))
 
-  (filter-map (lambda (node)
-                (let ((res (render node)))
-                  (if (equal? res "") #f res))) ast))
+  ;; Ensure we are mapping over a list of nodes, even if PEG returned a single node
+  (let ((nodes (cond
+                 ((string? ast)
+                  (list ast))
+                 ((and (pair? ast)
+                       (symbol? (car ast)))
+                  (list ast))
+                 (else ast))))
+    (filter-map (lambda (node)
+                  (let ((res (render node)))
+                    (if (equal? res "") #f res))) nodes)))
 
 (define (inline-org->html ast)
   "Convert an inline Org AST into an HTML string."
@@ -197,9 +240,13 @@ preserving raw HTML nodes."
       ;; Headings
       (('heading ('stars s)
         ('line-content text))
-       (let ((lvl (string-length s)))
-         (let ((tag (string->symbol (format #f "h~a" lvl))))
-           `(,tag ,@(inline-org->sxml (inline-org->ast text))))))
+       (let* ((lvl (string-length s))
+              (tag (string->symbol (format #f "h~a" lvl)))
+              (classes ((heading-classes)
+                        lvl)))
+         `(,tag ,@(make-sxml-attrs classes
+                                   '())
+           ,@(inline-org->sxml (inline-org->ast text)))))
 
       ;; Description lists
       (('description-list items ...)
@@ -236,7 +283,7 @@ preserving raw HTML nodes."
 
       ;; Paragraph
       (('paragraph ('line-content text))
-       `(p ,@(make-attrs (paragraph-classes))
+       `(p ,@(make-sxml-attrs (paragraph-classes))
            ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; Source block
@@ -246,9 +293,9 @@ preserving raw HTML nodes."
                                   (not (string-null? l)))
                              (list l)
                              '())))
-         `(pre ,@(make-attrs (append lang-class
-                                     (code-block-classes))
-                             '())
+         `(pre ,@(make-sxml-attrs (append lang-class
+                                          (code-block-classes))
+                                  '())
                ,bc)))
 
       ;; Quote block
@@ -256,15 +303,15 @@ preserving raw HTML nodes."
       ;; Quote text is regular Org content, so inline markup
       ;; should still be interpreted.
       (('quote-block ('quote-content text))
-       `(blockquote ,@(make-attrs (quote-block-classes))
+       `(blockquote ,@(make-sxml-attrs (quote-block-classes))
                     ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; Example block
       ;;
       ;; Example contents are literal. Do not parse them as Org.
       (('example-block ('example-content text))
-       `(pre ,@(make-attrs (example-block-classes)
-                           '())
+       `(pre ,@(make-sxml-attrs (example-block-classes)
+                                '())
              ,text))
 
       ;; HTML export block
@@ -276,12 +323,21 @@ preserving raw HTML nodes."
 
       ;; Horizontal rule
       (('horizontal-rule)
-       `(hr ,@(make-attrs (separator-classes)
-                          '())))
+       `(hr ,@(make-sxml-attrs (separator-classes)
+                               '())))
 
       (_ #f)))
 
-  (filter-map render ast))
+  (let ((nodes (cond
+                 ((string? ast)
+                  (list ast))
+                 ((and (pair? ast)
+                       (symbol? (car ast)))
+                  (list ast))
+                 (else ast))))
+    (filter-map (lambda (node)
+                  (let ((res (render node)))
+                    (if (equal? res "") #f res))) nodes)))
 
 (define (org-ast->html ast)
   "Convert a document Org AST into an HTML string."

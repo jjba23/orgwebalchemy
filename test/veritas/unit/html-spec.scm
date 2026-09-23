@@ -44,16 +44,8 @@ It sits right under the heading.
   (display \"Hello World!\"))
 #+END_SRC")
 
-(define sample-org-inline-text
-  "This is *bold*, /italic/, ~code~, =verbatim= and _underlined_.")
-
-(define sample-org-links
-  "Sometimes you just want to drop a URL directly into your document. Here is a link without a description: [[https://orgmode.org/]]
-
-You can also link to local files on your system.
-- With description: [[file:~/.emacs.d/init.el][My Emacs config]]
-- Without description: [[file:~/Documents/notes.txt]]
-
+(define sample-org-blocks
+  "
 #+begin_example
 * Verbatim content
 - Do not parse
@@ -74,15 +66,72 @@ IN VINO VERITAS IN AQUA SANITAS
                (assert-no-error (lambda ()
                                   (newline)
                                   (display (org->html sample-org-text)))))
-         (test "Inline Org mode parsing"
+         (test "Org blocks parsing"
                (assert-no-error (lambda ()
                                   (newline)
-                                  (display (inline-org->html (inline-org->ast
-                                                              sample-org-inline-text))))))
-         (test "Inline Org link parsing"
-               (assert-no-error (lambda ()
-                                  (newline)
-                                  (display (org->html sample-org-links)))))))
+                                  (display (org->html sample-org-blocks)))))))
+
+(define inline-org-suite
+  (suite "inline org"
+         (test "basic inline attributes"
+               (assert-equal #:got (inline-org->html (inline-org->ast "*bold*"))
+                             #:expect "<strong>bold</strong>")
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "/italic/"))
+                             #:expect "<em>italic</em>")
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "_underlined_"))
+                             #:expect "<u>underlined</u>")
+               (assert-equal #:got (inline-org->html (inline-org->ast "~code~"))
+                             #:expect "<code>code</code>")
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "=verbatim="))
+                             #:expect "<code>verbatim</code>")
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "[[https://gnu.org][GNU]]"))
+                             #:expect "<a href=\"https://gnu.org\">GNU</a>")
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "[[https://gnu.org]]"))
+                             #:expect
+                             "<a href=\"https://gnu.org\">https://gnu.org</a>"))))
+
+(define make-sxml-attrs-suite
+  (suite "make-sxml-attrs"
+         (test
+          "constructs a class attribute when classes and attributes are supplied"
+          (assert-equal #:got (make-sxml-attrs '("heading")
+                                               '((href "/about")))
+                        #:expect '((@ (class "heading")
+                                      (href "/about"))))
+          (assert-equal #:got (make-sxml-attrs '(btn "btn-primary" "active")
+                                               '((href "/about")))
+                        #:expect '((@ (class "btn btn-primary active")
+                                      (href "/about")))))
+         (test "constructs a class attribute when classes are supplied"
+               (assert-equal #:got (make-sxml-attrs '("heading"))
+                             #:expect '((@ (class "heading"))))
+               (assert-equal #:got (make-sxml-attrs '(btn "btn-primary"
+                                                          "active"))
+                             #:expect '((@ (class "btn btn-primary active")))))
+
+         (test "constructs attributes when they are supplied"
+               (assert-equal #:got (make-sxml-attrs '()
+                                                    '((href "/home")))
+                             #:expect '((@ (href "/home"))))
+               (assert-equal #:got (make-sxml-attrs '()
+                                                    '((id "main-header")
+                                                      (role "banner")))
+                             #:expect '((@ (id "main-header")
+                                           (role "banner")))))
+         (test "return empty list when no classes or attributes provided"
+               (assert-equal #:got (make-sxml-attrs '())
+                             #:expect '())
+               (assert-equal #:got (make-sxml-attrs '()
+                                                    '())
+                             #:expect '())
+               (assert-equal #:got (make-sxml-attrs '("")
+                                                    '())
+                             #:expect '()))))
 
 (define (spec)
-  (veritas-run org-to-html-suite))
+  (veritas-run org-to-html-suite make-sxml-attrs-suite inline-org-suite))
