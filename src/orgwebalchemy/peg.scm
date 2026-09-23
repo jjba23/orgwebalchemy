@@ -56,6 +56,7 @@
                     (or empty-line
                         heading
                         separator
+                        table
                         src-block
                         quote-block
                         example-block
@@ -83,8 +84,7 @@
 ;; by whitespace, followed by a newline or EOF.
 
 (define-peg-pattern separator all
-                    (and (* ws)
-                         "-----"
+                    (and (* ws) "-----"
                          (* "-")
                          (* ws)
                          (or nl eof)))
@@ -100,6 +100,81 @@
                          (or nl eof)))
 (define-peg-pattern stars all
                     (+ "*"))
+
+;; =====================================================================
+;; Tables
+;; =====================================================================
+;;
+;; Org tables look like:
+;;
+;; | Name  | Age | City    |
+;; |-------+-----+---------|
+;; | Alice | 30  | London  |
+;; | Bob   | 25  | Berlin  |
+;;
+;;
+
+;; A table is delimited by vertical bar.
+(define-peg-pattern table-sep none
+                    "|")
+
+;; A table must start with a vertical bar.
+(define-peg-pattern table-start none "|")
+
+;; A table cell is everything up to the next `|`.
+;;
+;; Whitespace surrounding the actual value is retained for now. This is
+;; useful because we can normalize it later in the renderer/AST layer.
+(define-peg-pattern table-cell all
+                    (* (and (not-followed-by (or "|" nl eof)) peg-any)))
+
+(define-peg-pattern table-column-sep none
+                    "+")
+
+;; A normal table row.
+;;
+;; Example:
+;;
+;;   | Alice | 30 | London |
+;;
+(define-peg-pattern table-row all
+                    (and table-sep table-cell
+                         (* (and table-sep table-cell))
+                         (or table-sep nl eof)))
+
+;; A table separator cell consists of dashes, optionally surrounded
+;; by whitespace.
+;;
+;; Examples:
+;;
+;;   -------
+;;   --------
+;;     -----
+;;
+(define-peg-pattern table-separator-cell none
+                    (and (* ws)
+                         (+ "-")
+                         (* ws)))
+
+;; A separator row:
+;;
+;;   |-------+------+--------|
+;;
+;; Org uses `+` between columns in separator rows.
+(define-peg-pattern table-separator-row all
+                    (and table-sep
+                         table-separator-cell
+                         (* (and table-column-sep
+                                 table-separator-cell))
+                         (or table-sep nl eof)))
+
+;; A table row is either a separator or a normal row.
+(define-peg-pattern table-line body
+                    (or table-separator-row table-row))
+
+;; A complete table consists of one or more consecutive table lines.
+(define-peg-pattern table all
+                    (+ table-line))
 
 ;; =====================================================================
 ;; List Items & Recursive List Containers

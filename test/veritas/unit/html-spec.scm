@@ -62,15 +62,24 @@ IN VINO VERITAS IN AQUA SANITAS
 #+end_export
 ")
 
+(define sample-org-table
+  "
+| Name  | Age | City   |
+|-------+-----+--------|
+| Alice | 30  | London |
+| Bob   | 25  | Berlin |
+")
+
 (define org-to-html-suite
   (suite "Org to HTML"
          (test "Org mode parsing"
                (assert-no-error (lambda ()
-                                  (newline)
                                   (display (org->html sample-org-text)))))
+         (test "Org table parsing"
+               (assert-no-error (lambda ()
+                                  (display (org->html sample-org-table)))))
          (test "Org blocks parsing"
                (assert-no-error (lambda ()
-                                  (newline)
                                   (display (org->html sample-org-blocks)))))))
 
 (define inline-org-suite
