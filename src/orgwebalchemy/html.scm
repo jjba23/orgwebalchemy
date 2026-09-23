@@ -31,9 +31,12 @@
                              link-classes
                              code-classes
                              code-block-classes
+                             quote-block-classes
+                             example-block-classes
                              italic-classes
                              bold-classes
-                             hr-classes))
+                             underline-classes
+                             separator-classes))
 
 ;;; Configuration Parameters
 
@@ -46,13 +49,25 @@
 (define code-block-classes
   (make-parameter '()))
 
+(define quote-block-classes
+  (make-parameter '()))
+
+(define example-block-classes
+  (make-parameter '()))
+
 (define italic-classes
   (make-parameter '()))
 
 (define bold-classes
   (make-parameter '()))
 
-(define hr-classes
+(define separator-classes
+  (make-parameter '()))
+
+(define paragraph-classes
+  (make-parameter '()))
+
+(define underline-classes
   (make-parameter '()))
 
 ;;; Helper Utilities
@@ -76,7 +91,7 @@
 preserving raw HTML nodes."
   (define (render-node node port)
     (match node
-      ;; Raw HTML is emitted without escaping.
+      ;; Raw HTML (custom tag) is emitted without escaping.
       (('raw-html html)
        (display html port))
 
@@ -88,8 +103,8 @@ preserving raw HTML nodes."
            (for-each (lambda (child)
                        (render-node child port)) node)))
 
-      ;; Strings are emitted literally here. SXML handles escaping
-      ;; when they occur inside ordinary elements.
+      ;; Strings are emitted literally here.
+      ;; SXML handles escaping when they occur inside ordinary elements.
       (_ (display node port))))
 
   (call-with-output-string (lambda (port)
@@ -138,7 +153,8 @@ preserving raw HTML nodes."
 
       ;; _underline_
       (('inline-underline-content text)
-       `(u ,@(inline-org->sxml (inline-org->ast text))))
+       `(u ,@(make-attrs (underline-classes))
+           ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; [[URL][description]]
       (('inline-link-with-desc ('link-target-content url)
@@ -220,7 +236,8 @@ preserving raw HTML nodes."
 
       ;; Paragraph
       (('paragraph ('line-content text))
-       `(p ,@(inline-org->sxml (inline-org->ast text))))
+       `(p ,@(make-attrs (paragraph-classes))
+           ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; Source block
       (('src-block ('lang l)
@@ -239,26 +256,27 @@ preserving raw HTML nodes."
       ;; Quote text is regular Org content, so inline markup
       ;; should still be interpreted.
       (('quote-block ('quote-content text))
-       `(blockquote ,@(inline-org->sxml (inline-org->ast text))))
+       `(blockquote ,@(make-attrs (quote-block-classes))
+                    ,@(inline-org->sxml (inline-org->ast text))))
 
       ;; Example block
       ;;
       ;; Example contents are literal. Do not parse them as Org.
       (('example-block ('example-content text))
-       `(pre ,@(make-attrs (code-block-classes)
+       `(pre ,@(make-attrs (example-block-classes)
                            '())
              ,text))
 
       ;; HTML export block
       ;;
-      ;; The contents are already HTML. Mark them as raw so that
+      ;; The contents are already HTML. Mark them as raw with custom tag so that
       ;; they are not escaped or interpreted as Org markup.
       (('export-html-block ('export-html-content html))
        `(raw-html ,html))
 
       ;; Horizontal rule
       (('horizontal-rule)
-       `(hr ,@(make-attrs (hr-classes)
+       `(hr ,@(make-attrs (separator-classes)
                           '())))
 
       (_ #f)))
