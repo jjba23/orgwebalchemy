@@ -104,69 +104,49 @@
 ;; =====================================================================
 ;; Tables
 ;; =====================================================================
-;;
-;; Org tables look like:
-;;
-;; | Name  | Age | City    |
-;; |-------+-----+---------|
-;; | Alice | 30  | London  |
-;; | Bob   | 25  | Berlin  |
-;;
-;;
 
 ;; A table is delimited by vertical bar.
-(define-peg-pattern table-sep none
-                    "|")
+(define-peg-pattern table-sep none "|")
 
 ;; A table must start with a vertical bar.
 (define-peg-pattern table-start none "|")
 
-;; A table cell is everything up to the next `|`.
-;;
-;; Whitespace surrounding the actual value is retained for now. This is
-;; useful because we can normalize it later in the renderer/AST layer.
+;; A table cell is everything up to the next `|`, newline, or EOF.
 (define-peg-pattern table-cell all
-                    (* (and (not-followed-by (or "|" nl eof)) peg-any)))
+                    (* (and (not-followed-by (or table-sep nl eof)) peg-any)))
 
-(define-peg-pattern table-column-sep none
-                    "+")
+(define-peg-pattern table-column-sep none "+")
+
+;; Properly consumes the optional closing pipe, trailing spaces, and the newline.
+(define-peg-pattern table-row-end none
+                    (or (and table-sep
+                             (* ws)
+                             (or nl eof))
+                        (and (* ws)
+                             (or nl eof))))
 
 ;; A normal table row.
-;;
-;; Example:
-;;
-;;   | Alice | 30 | London |
-;;
+;; We use `(followed-by table-sep)` to ensure it starts with a pipe without
+;; creating an extra nesting layer. The single `*` loop flattens the cells nicely.
 (define-peg-pattern table-row all
-                    (and table-sep table-cell
-                         (* (and table-sep table-cell))
-                         (or table-sep nl eof)))
+                    (and (followed-by table-sep)
+                         (* (and table-sep
+                                 (not-followed-by table-row-end) table-cell))
+                         table-row-end))
 
 ;; A table separator cell consists of dashes, optionally surrounded
 ;; by whitespace.
-;;
-;; Examples:
-;;
-;;   -------
-;;   --------
-;;     -----
-;;
 (define-peg-pattern table-separator-cell none
                     (and (* ws)
                          (+ "-")
                          (* ws)))
 
 ;; A separator row:
-;;
-;;   |-------+------+--------|
-;;
-;; Org uses `+` between columns in separator rows.
+;; Ends properly using `table-row-end` so it doesn't leave unconsumed newlines.
 (define-peg-pattern table-separator-row all
-                    (and table-sep
-                         table-separator-cell
-                         (* (and table-column-sep
-                                 table-separator-cell))
-                         (or table-sep nl eof)))
+                    (and table-sep table-separator-cell
+                         (* (and table-column-sep table-separator-cell))
+                         table-row-end))
 
 ;; A table row is either a separator or a normal row.
 (define-peg-pattern table-line body
