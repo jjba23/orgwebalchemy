@@ -55,6 +55,7 @@
 (define-peg-pattern element body
                     (or empty-line
                         heading
+                        separator
                         src-block
                         quote-block
                         example-block
@@ -66,6 +67,27 @@
 
 (define-peg-pattern empty-line none
                     (and (* ws) nl))
+
+;; =====================================================================
+;; Horizontal Rules / Separators
+;; =====================================================================
+
+;; Org-mode horizontal rule:
+;;
+;;   -----
+;;   ----------
+;;     --------
+;;   -----
+;;
+;; A separator consists of at least five hyphens, optionally surrounded
+;; by whitespace, followed by a newline or EOF.
+
+(define-peg-pattern separator all
+                    (and (* ws)
+                         "-----"
+                         (* "-")
+                         (* ws)
+                         (or nl eof)))
 
 ;; =====================================================================
 ;; Block Level Elements
@@ -268,6 +290,7 @@
                         "#+"
                         (and (+ digit)
                              (or "." ")"))
+                        separator
                         (and (* ws) nl)))
 
 (define-peg-pattern paragraph all

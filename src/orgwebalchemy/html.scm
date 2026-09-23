@@ -248,6 +248,10 @@ preserving raw HTML nodes."
                                    '())
            ,@(inline-org->sxml (inline-org->ast text)))))
 
+      ;; Horizontal Separator
+      (('separator sep-content)
+       `(hr))
+
       ;; Description lists
       (('description-list items ...)
        `(dl ,@(append-map (lambda (li)
