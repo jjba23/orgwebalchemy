@@ -118,7 +118,7 @@
 
 (define* (make-sxml-attrs classes
                           #:optional (extra-attrs '()))
-  "Construct an SXML (@ ...) attribute node if classes or extra attributes exist."
+  "Construct an SXML attribute node if classes or extra attributes exist."
   (let ((cls-str (string-join (map (lambda (c)
                                      (format #f "~a" c)) classes) " ")))
     (cond
@@ -256,7 +256,7 @@ preserving raw HTML nodes."
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
-      
+
       ;; Headings
       (('heading ('stars s)
         ('line-content text))
