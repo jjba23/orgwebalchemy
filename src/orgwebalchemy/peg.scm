@@ -148,9 +148,17 @@
                          (* (and table-column-sep table-separator-cell))
                          table-row-end))
 
-;; A table row is either a separator or a normal row.
+;; A header row is a normal row immediately followed by a table separator row.
+(define-peg-pattern table-header-row all
+                    (and (followed-by table-sep)
+                         (* (and table-sep
+                                 (not-followed-by table-row-end) table-cell))
+                         table-row-end
+                         (followed-by table-separator-row)))
+
+;; Update table-line to recognize header rows first.
 (define-peg-pattern table-line body
-                    (or table-separator-row table-row))
+                    (or table-header-row table-separator-row table-row))
 
 ;; A complete table consists of one or more consecutive table lines.
 (define-peg-pattern table all
