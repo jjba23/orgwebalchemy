@@ -270,6 +270,7 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 - Italic, Bold, Inline Code
 - Links with and without description (with nested parsing)
 - Horizontal separators (~--------~) five or more dashes
+- Tables
 - ~#+begin_src~
 - ~#+begin_example~
 - ~#+begin_quote~ (with nested parsing)
