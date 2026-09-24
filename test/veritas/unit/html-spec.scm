@@ -251,27 +251,7 @@
                (assert-equal #:got (org->html "- Term :: Definition text
   - Term2 :: Def2")
                 #:expect
-                "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))
-         ;; (test "mixed nested lists (ordered inside unordered)"
-         ;; (assert-equal #:got (org->html "- Parent item
-         ;; 1) Child one
-         ;; 2) Child two")
-         ;; #:expect
-         ;; "<ul><li>Parent item<ol><li>Child one</li><li>Child two</li></ol></li></ul>"))
-         ;; (test "mixed nested lists (unordered inside ordered)"
-         ;; (assert-equal #:got (org->html
-         ;; "1) Step one\n  - Subtask A\n  - Subtask B")
-         ;; #:expect
-         ;; "<ol><li>Step one<ul><li>Subtask A</li><li>Subtask B</li></ul></li></ol>"))
-         ;; (test "deeply nested multi-level lists"
-         ;; (assert-equal #:got (org->html "- Level one
-         ;; - Level two
-         ;; 1) Level three item 1
-         ;; 2) Level three item 2
-         ;; - Level four detail")
-         ;; #:expect
-         ;; "<ul><li>Level one<ul><li>Level two<ol><li>Level three item 1</li><li>Level three item 2<ul><li>Level four detail</li></ul></li></ol></li></ul></li></ul>"))
-         ))
+                "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))))
 
 ;; =======================================================================
 ;; Runner Specification
