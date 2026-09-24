@@ -16,6 +16,7 @@
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (orgwebalchemy html)
+  #:declarative? #t
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
@@ -40,82 +41,22 @@
                              underline-classes
                              paragraph-classes
                              separator-classes
+                             description-list-classes
+                             description-term-classes
+                             description-detail-classes
+                             unordered-list-classes
+                             unordered-list-item-classes
+                             ordered-list-classes
+                             ordered-list-item-classes
                              table-classes
                              table-header-row-classes
                              table-header-cell-classes
                              table-row-classes
                              table-cell-classes))
 
-;;; Configuration Parameters
-
-(define link-classes
-  (make-parameter '()))
-
-(define code-classes
-  (make-parameter '()))
-
-(define code-block-classes
-  (make-parameter '()))
-
-(define quote-block-classes
-  (make-parameter '()))
-
-(define example-block-classes
-  (make-parameter '()))
-
-(define italic-classes
-  (make-parameter '()))
-
-(define bold-classes
-  (make-parameter '()))
-
-(define separator-classes
-  (make-parameter '()))
-
-(define paragraph-classes
-  (make-parameter '()))
-
-(define underline-classes
-  (make-parameter '()))
-
-(define table-classes
-  (make-parameter '()))
-
-(define table-header-row-classes
-  (make-parameter '()))
-
-(define table-header-cell-classes
-  (make-parameter '()))
-
-(define table-row-classes
-  (make-parameter '()))
-
-(define table-cell-classes
-  (make-parameter '()))
-
-(define heading-classes
-  ;; heading-classes is a more complex item, as it handles multiple header levels
-  ;; and can be customized as so:
-  ;;
-  ;; (heading-classes
-  ;; (lambda (level)
-  ;; (case level
-  ;; ((1) '("text-4xl" "font-bold" "mb-4"))
-  ;; ((2) '("text-2xl" "font-semibold" "mb-3"))
-  ;; ((3) '("text-xl" "font-medium" "mb-2"))
-  ;; (else '("text-base" "font-normal")))))
-  ;;
-  ;; or:
-  ;; (heading-classes
-  ;; (lambda (level)
-  ;; (list (format #f "org-heading-lvl-~a" level) "header-element")))
-  ;;
-  ;; defaults to a procedure taking the heading level (integer)
-  ;; and returning an empty list of classes.
-  (make-parameter (lambda _
-                    '())))
-
-;;; Helper Utilities
+;; =======================================================================
+;; Helpers & Utilities
+;; =======================================================================
 
 (define* (make-sxml-attrs classes
                           #:optional (extra-attrs '()))
@@ -274,34 +215,41 @@ preserving raw HTML nodes."
 
       ;; Description lists
       (('description-list items ...)
-       `(dl ,@(append-map (lambda (li)
+       `(dl ,(make-sxml-attrs (description-list-classes))
+            ,@(append-map (lambda (li)
                             (match li
                               (((or 'unordered-item
                                     'desc-item)
                                 ('desc-key key)
                                 ('line-content text) sub-nodes ...)
-                               `((dt ,@(inline-org->sxml (inline-org->ast key)))
-                                 (dd ,@(inline-org->sxml (inline-org->ast text))
+                               `((dt ,(make-sxml-attrs (description-term-classes))
+                                     ,@(inline-org->sxml (inline-org->ast key)))
+                                 (dd ,(make-sxml-attrs (description-detail-classes))
+                                     ,@(inline-org->sxml (inline-org->ast text))
                                      ,@(org-ast->sxml sub-nodes))))
                               (_ '()))) items)))
 
       ;; Unordered lists
       (('unordered-list items ...)
-       `(ul ,@(filter-map (lambda (li)
+       `(ul ,(make-sxml-attrs (unordered-list-classes))
+            ,@(filter-map (lambda (li)
                             (match li
                               (('unordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,@(inline-org->sxml (inline-org->ast text))
+                               `(li ,(make-sxml-attrs (unordered-list-item-classes))
+                                    ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
       ;; Ordered lists
       (('ordered-list items ...)
-       `(ol ,@(filter-map (lambda (li)
+       `(ol ,(make-sxml-attrs (ordered-list-classes))
+            ,@(filter-map (lambda (li)
                             (match li
                               (('ordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,@(inline-org->sxml (inline-org->ast text))
+                               `(li ,(make-sxml-attrs (ordered-list-item-classes))
+                                    ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
@@ -391,3 +339,95 @@ preserving raw HTML nodes."
 (define (org->html str)
   "Convert an Org-mode string into an HTML string."
   (sxml->html-string (org->sxml str)))
+
+;; =============================================
+;; Configuration Parameters
+;; =============================================
+
+(define link-classes
+  (make-parameter '()))
+
+(define code-classes
+  (make-parameter '()))
+
+(define code-block-classes
+  (make-parameter '()))
+
+(define quote-block-classes
+  (make-parameter '()))
+
+(define example-block-classes
+  (make-parameter '()))
+
+(define italic-classes
+  (make-parameter '()))
+
+(define bold-classes
+  (make-parameter '()))
+
+(define separator-classes
+  (make-parameter '()))
+
+(define paragraph-classes
+  (make-parameter '()))
+
+(define underline-classes
+  (make-parameter '()))
+
+(define table-classes
+  (make-parameter '()))
+
+(define table-header-row-classes
+  (make-parameter '()))
+
+(define table-header-cell-classes
+  (make-parameter '()))
+
+(define table-row-classes
+  (make-parameter '()))
+
+(define table-cell-classes
+  (make-parameter '()))
+
+(define heading-classes
+  ;; heading-classes is a more complex item, as it handles multiple header levels
+  ;; and can be customized as so:
+  ;;
+  ;; (heading-classes
+  ;; (lambda (level)
+  ;; (case level
+  ;; ((1) '("text-4xl" "font-bold" "mb-4"))
+  ;; ((2) '("text-2xl" "font-semibold" "mb-3"))
+  ;; ((3) '("text-xl" "font-medium" "mb-2"))
+  ;; (else '("text-base" "font-normal")))))
+  ;;
+  ;; or:
+  ;; (heading-classes
+  ;; (lambda (level)
+  ;; (list (format #f "org-heading-lvl-~a" level) "header-element")))
+  ;;
+  ;; defaults to a procedure taking the heading level (integer)
+  ;; and returning an empty list of classes.
+  (make-parameter (lambda _
+                    '())))
+
+(define description-list-classes
+  (make-parameter '()))
+
+(define description-term-classes
+  (make-parameter '()))
+
+(define description-detail-classes
+  (make-parameter '()))
+
+(define unordered-list-classes
+  (make-parameter '()))
+
+(define unordered-list-item-classes
+  (make-parameter '()))
+
+(define ordered-list-classes
+  (make-parameter '()))
+
+(define ordered-list-item-classes
+  (make-parameter '()))

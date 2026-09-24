@@ -16,6 +16,7 @@
 ;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (orgwebalchemy peg)
+  #:declarative? #t
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
