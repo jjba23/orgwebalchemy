@@ -38,6 +38,7 @@
                              bold-classes
                              heading-classes
                              underline-classes
+                             paragraph-classes
                              separator-classes
                              table-classes
                              table-header-row-classes
