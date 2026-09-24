@@ -198,7 +198,7 @@ preserving raw HTML nodes."
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
-      
+
       ;; Headings
       (('heading ('stars s)
         ('line-content text))
@@ -215,40 +215,40 @@ preserving raw HTML nodes."
 
       ;; Description lists
       (('description-list items ...)
-       `(dl ,(make-sxml-attrs (description-list-classes))
+       `(dl ,@(make-sxml-attrs (description-list-classes))
             ,@(append-map (lambda (li)
                             (match li
                               (((or 'unordered-item
                                     'desc-item)
                                 ('desc-key key)
                                 ('line-content text) sub-nodes ...)
-                               `((dt ,(make-sxml-attrs (description-term-classes))
+                               `((dt ,@(make-sxml-attrs (description-term-classes))
                                      ,@(inline-org->sxml (inline-org->ast key)))
-                                 (dd ,(make-sxml-attrs (description-detail-classes))
+                                 (dd ,@(make-sxml-attrs (description-detail-classes))
                                      ,@(inline-org->sxml (inline-org->ast text))
                                      ,@(org-ast->sxml sub-nodes))))
                               (_ '()))) items)))
 
       ;; Unordered lists
       (('unordered-list items ...)
-       `(ul ,(make-sxml-attrs (unordered-list-classes))
+       `(ul ,@(make-sxml-attrs (unordered-list-classes))
             ,@(filter-map (lambda (li)
                             (match li
                               (('unordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,(make-sxml-attrs (unordered-list-item-classes))
+                               `(li ,@(make-sxml-attrs (unordered-list-item-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
       ;; Ordered lists
       (('ordered-list items ...)
-       `(ol ,(make-sxml-attrs (ordered-list-classes))
+       `(ol ,@(make-sxml-attrs (ordered-list-classes))
             ,@(filter-map (lambda (li)
                             (match li
                               (('ordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,(make-sxml-attrs (ordered-list-item-classes))
+                               `(li ,@(make-sxml-attrs (ordered-list-item-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
@@ -293,24 +293,24 @@ preserving raw HTML nodes."
 
       ;; Tables
       (('table items ...)
-       `(table ,(make-sxml-attrs (table-classes))
+       `(table ,@(make-sxml-attrs (table-classes))
                ,@(org-ast->sxml items)))
 
       (('table-header-row items ...)
-       `(thead (tr ,(make-sxml-attrs (table-header-row-classes))
+       `(thead (tr ,@(make-sxml-attrs (table-header-row-classes))
                    ,@(map (lambda (cell)
                             (match cell
                               (('table-cell text)
-                               `(th ,(make-sxml-attrs (table-header-cell-classes))
+                               `(th ,@(make-sxml-attrs (table-header-cell-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))))
                               (_ #f))) items))))
 
       (('table-row items ...)
-       `(tbody (tr ,(make-sxml-attrs (table-row-classes))
+       `(tbody (tr ,@(make-sxml-attrs (table-row-classes))
                    ,@(map (lambda (cell)
                             (match cell
                               (('table-cell text)
-                               `(td ,(make-sxml-attrs (table-cell-classes))
+                               `(td ,@(make-sxml-attrs (table-cell-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))))
                               (_ #f))) items))))
 
