@@ -505,13 +505,15 @@
 (define (inline-org->ast text)
   "Parse inline Org markup in TEXT."
   (let ((ast (peg:tree (match-pattern inline-content text))))
-    (newline)
-    (pretty-print ast)
-    (newline) ast))
+    ;; (newline)
+    ;; (pretty-print ast)
+    ;; (newline)
+    ast))
 
 (define (org->ast str)
   "Convert an Org-mode string directly into an AST with nested list structures."
   (let ((ast (peg:tree (match-pattern org-doc str))))
-    (newline)
-    (pretty-print ast)
-    (newline) ast))
+    ;; (newline)
+    ;; (pretty-print ast)
+    ;; (newline)
+    ast))
