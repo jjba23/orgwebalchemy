@@ -27,7 +27,6 @@
 
 (define (fixture-to-string name)
   (let ((fixture-path (format #f "test/fixtures/~a" name)))
-    (write fixture-path)
     (call-with-input-file fixture-path
       read-string)))
 
@@ -128,31 +127,6 @@
                                     "A simple paragraph with *bold* text.")
                 #:expect
                 "<p>A simple paragraph with <strong>bold</strong> text.</p>"))
-         (test "unordered and ordered lists transformation"
-               (assert-equal #:got (org->html "- Item 1\n- Item 2")
-                             #:expect
-                             "<ul><li>Item 1</li><li>Item 2</li></ul>")
-               (assert-equal #:got (org->html "1) First\n2) Second")
-                             #:expect "<ol><li>First</li><li>Second</li></ol>"))
-         (test "nested unordered and nested ordered lists transformation"
-               (assert-equal #:got (org->html
-                                              "- Item 1\n  - Item 1.1\n  - Item 1.2")
-                #:expect
-                "<ul><li>Item 1<ul><li>Item 1.1</li><li>Item 1.2</li></ul></li></ul>")
-               (assert-equal #:got (org->html "1) Item 1
-  1.1) Item 1.1
-  1.2) Item 1.2")
-                #:expect
-                "<ol><li>Item 1<ol><li>Item 1.1</li><li>Item 1.2</li></ol></li></ol>"))
-         (test "description list transformation"
-               (assert-equal #:got (org->html "- Term :: Definition text")
-                             #:expect
-                             "<dl><dt>Term</dt><dd>Definition text</dd></dl>"))
-         (test "nested description list transformation"
-               (assert-equal #:got (org->html "- Term :: Definition text
-  - Term2 :: Def2")
-                #:expect
-                "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))
          (test "special blocks: quote, example, src, export, separator"
                (assert-equal #:got (org->html
                                               "#+BEGIN_QUOTE\nQuoted *text*\n#+END_QUOTE")
@@ -251,6 +225,54 @@
                (assert-no-error (lambda ()
                                   (org->html sample-org-blocks))))))
 
+(define list-to-html-suite
+  (suite "List transformations"
+         (test "unordered and ordered lists transformation"
+               (assert-equal #:got (org->html "- Item 1\n- Item 2")
+                             #:expect
+                             "<ul><li>Item 1</li><li>Item 2</li></ul>")
+               (assert-equal #:got (org->html "1) First\n2) Second")
+                             #:expect "<ol><li>First</li><li>Second</li></ol>"))
+         (test "nested unordered and nested ordered lists transformation"
+               (assert-equal #:got (org->html
+                                              "- Item 1\n  - Item 1.1\n  - Item 1.2")
+                #:expect
+                "<ul><li>Item 1<ul><li>Item 1.1</li><li>Item 1.2</li></ul></li></ul>")
+               (assert-equal #:got (org->html "1) Item 1
+  1.1) Item 1.1
+  1.2) Item 1.2")
+                #:expect
+                "<ol><li>Item 1<ol><li>Item 1.1</li><li>Item 1.2</li></ol></li></ol>"))
+         (test "description list transformation"
+               (assert-equal #:got (org->html "- Term :: Definition text")
+                             #:expect
+                             "<dl><dt>Term</dt><dd>Definition text</dd></dl>"))
+         (test "nested description list transformation"
+               (assert-equal #:got (org->html "- Term :: Definition text
+  - Term2 :: Def2")
+                #:expect
+                "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))
+         ;; (test "mixed nested lists (ordered inside unordered)"
+         ;; (assert-equal #:got (org->html "- Parent item
+         ;; 1) Child one
+         ;; 2) Child two")
+         ;; #:expect
+         ;; "<ul><li>Parent item<ol><li>Child one</li><li>Child two</li></ol></li></ul>"))
+         ;; (test "mixed nested lists (unordered inside ordered)"
+         ;; (assert-equal #:got (org->html
+         ;; "1) Step one\n  - Subtask A\n  - Subtask B")
+         ;; #:expect
+         ;; "<ol><li>Step one<ul><li>Subtask A</li><li>Subtask B</li></ul></li></ol>"))
+         ;; (test "deeply nested multi-level lists"
+         ;; (assert-equal #:got (org->html "- Level one
+         ;; - Level two
+         ;; 1) Level three item 1
+         ;; 2) Level three item 2
+         ;; - Level four detail")
+         ;; #:expect
+         ;; "<ul><li>Level one<ul><li>Level two<ol><li>Level three item 1</li><li>Level three item 2<ul><li>Level four detail</li></ul></li></ol></li></ul></li></ul>"))
+         ))
+
 ;; =======================================================================
 ;; Runner Specification
 ;; =======================================================================
@@ -262,4 +284,5 @@
                org-table-suite
                parameterized-classes-suite
                sxml-rendering-suite
-               org-to-html-suite))
+               org-to-html-suite
+               list-to-html-suite))
