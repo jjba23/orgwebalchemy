@@ -35,6 +35,10 @@ In a simplified way:
 
 ---------------------------------
 
+[[https://jointhefreeworld.org/static-assets/orgwebalchemy/screen-2026-09-24-11-21-12.png]]
+
+---------------------------------
+
 ** What is a PEG? (Parsing Expression Grammars)
 
 Read a [[https://en.wikipedia.org/wiki/Parsing_expression_grammar][nice explanation of PEG on Wikipedia]] or dive directly into the Guile Scheme ~(ice-9 peg)~ module and accompanying [[https://doc.guix.gnu.org/guile/3.0.9/en/html_node/PEG-Parsing.html][fantastic tutorial by GNU]].
@@ -259,7 +263,7 @@ PEGs are great at describing a language.
 
 And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
-------------------------
+--------------
 
 * Supported Org features
 
@@ -352,3 +356,10 @@ Find here the Backlog and Kanban boards for orgwebalchemy: https://lucidplan.joi
 -------
 
 [[https://jointhefreeworld.org/static-assets/orgwebalchemy/orgwebalchemy-small.png]]
+
+---------
+
+* What people are saying about OrgWebAlchemy
+
+- https://jointhefreeworld.org/blog/articles/lisps/parsing-expression-grammar-lisp-org-convert-to-html/index.html
+- https://www.reddit.com/r/lisp/comments/1wox8h4/parsing_org_mode_with_parsing_expression_grammars/
