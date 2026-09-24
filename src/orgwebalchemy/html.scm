@@ -198,7 +198,7 @@ preserving raw HTML nodes."
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
-
+      
       ;; Headings
       (('heading ('stars s)
         ('line-content text))
@@ -214,11 +214,13 @@ preserving raw HTML nodes."
        `(hr ,@(make-sxml-attrs (separator-classes))))
 
       ;; Description lists
-      (('description-list items ...)
+      (((or 'description-list
+            'nested-description-list)
+        items ...)
        `(dl ,@(make-sxml-attrs (description-list-classes))
             ,@(append-map (lambda (li)
                             (match li
-                              (((or 'unordered-item
+                              (((or 'nested-desc-item
                                     'desc-item)
                                 ('desc-key key)
                                 ('line-content text) sub-nodes ...)
@@ -230,24 +232,30 @@ preserving raw HTML nodes."
                               (_ '()))) items)))
 
       ;; Unordered lists
-      (('unordered-list items ...)
+      (((or 'unordered-list
+            'nested-unordered-list)
+        items ...)
        `(ul ,@(make-sxml-attrs (unordered-list-classes))
             ,@(filter-map (lambda (li)
                             (match li
-                              (('unordered-item ('line-content text) sub-nodes
-                                ...)
+                              (((or 'unordered-item
+                                    'nested-unordered-item)
+                                ('line-content text) sub-nodes ...)
                                `(li ,@(make-sxml-attrs (unordered-list-item-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))
                               (_ #f))) items)))
 
       ;; Ordered lists
-      (('ordered-list items ...)
+      (((or 'ordered-list
+            'nested-ordered-list)
+        items ...)
        `(ol ,@(make-sxml-attrs (ordered-list-classes))
             ,@(filter-map (lambda (li)
                             (match li
-                              (('ordered-item ('line-content text) sub-nodes
-                                ...)
+                              (((or 'ordered-item
+                                    'nested-ordered-item)
+                                ('line-content text) sub-nodes ...)
                                `(li ,@(make-sxml-attrs (ordered-list-item-classes))
                                     ,@(inline-org->sxml (inline-org->ast text))
                                     ,@(org-ast->sxml sub-nodes)))

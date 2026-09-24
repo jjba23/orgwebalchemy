@@ -134,6 +134,16 @@
                              "<ul><li>Item 1</li><li>Item 2</li></ul>")
                (assert-equal #:got (org->html "1) First\n2) Second")
                              #:expect "<ol><li>First</li><li>Second</li></ol>"))
+         (test "nested unordered and nested ordered lists transformation"
+               (assert-equal #:got (org->html
+                                              "- Item 1\n  - Item 1.1\n  - Item 1.2")
+                #:expect
+                "<ul><li>Item 1<ul><li>Item 1.1</li><li>Item 1.2</li></ul></li></ul>")
+               (assert-equal #:got (org->html "1) Item 1
+  1.1) Item 1.1
+  1.2) Item 1.2")
+                #:expect
+                "<ol><li>Item 1<ol><li>Item 1.1</li><li>Item 1.2</li></ol></li></ol>"))
          (test "description list transformation"
                (assert-equal #:got (org->html "- Term :: Definition text")
                              #:expect

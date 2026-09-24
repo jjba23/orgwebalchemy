@@ -169,11 +169,29 @@
 ;; List Items & Recursive List Containers
 ;; =====================================================================
 
+;; =====================================================================
+;; List Items & Recursive List Containers
+;; =====================================================================
+
 (define-peg-pattern list-bullet none
                     (or "-" "+"))
 
-(define-peg-pattern list-num none
+;; Recognize upper and lower case letters
+(define-peg-pattern alpha none
+                    (or (range #\a #\z)
+                        (range #\A #\Z)))
+
+;; Recognize digits separated by dots (e.g., "1", "1.1", "1.2.3")
+;; It greedily grabs "digit(s)" optionally followed by ".digit(s)"
+(define-peg-pattern hierarchical-num none
                     (and (+ digit)
+                         (* (and "." (+ digit)))))
+
+;; An ordered list bullet is either a hierarchical number or alphabetical characters,
+;; followed by a period or a closing parenthesis.
+(define-peg-pattern list-num none
+                    (and (or hierarchical-num
+                             (+ alpha))
                          (or "." ")")))
 
 (define-peg-pattern desc-sep none
@@ -189,14 +207,15 @@
                     (and "  "
                          (* ws)))
 
-;; Nested list wrapper
+;; 1. Sub-lists MUST ONLY match nested lists to stop sibling swallowing.
 (define-peg-pattern sub-list body
-                    (or description-list unordered-list ordered-list))
+                    (or nested-description-list nested-unordered-list nested-ordered-list))
 
 ;; --- Description Lists ---
 
 (define-peg-pattern desc-item all
-                    (and (* ws)
+                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
+                         (* ws)
                          (or list-bullet list-num)
                          (+ ws)
                          desc-key
@@ -212,16 +231,19 @@
                          desc-key
                          desc-sep
                          line-content
-                         (or nl eof)
-                         (* sub-list)))
+                         (or nl eof))) ;; Nested items stop recursion here
+
+(define-peg-pattern nested-description-list all
+                    (+ nested-desc-item))
 
 (define-peg-pattern description-list all
-                    (+ (or nested-desc-item desc-item)))
+                    (+ desc-item)) ;; Base list only matches base items
 
 ;; --- Unordered Lists ---
 
 (define-peg-pattern unordered-item all
-                    (and (* ws)
+                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
+                         (* ws)
                          list-bullet
                          (+ ws)
                          line-content
@@ -233,16 +255,19 @@
                          list-bullet
                          (+ ws)
                          line-content
-                         (or nl eof)
-                         (* sub-list)))
+                         (or nl eof))) ;; Nested items stop recursion here
+
+(define-peg-pattern nested-unordered-list all
+                    (+ nested-unordered-item))
 
 (define-peg-pattern unordered-list all
-                    (+ (or nested-unordered-item unordered-item)))
+                    (+ unordered-item)) ;; Base list only matches base items
 
 ;; --- Ordered Lists ---
 
 (define-peg-pattern ordered-item all
-                    (and (* ws)
+                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
+                         (* ws)
                          list-num
                          (+ ws)
                          line-content
@@ -254,11 +279,13 @@
                          list-num
                          (+ ws)
                          line-content
-                         (or nl eof)
-                         (* sub-list)))
+                         (or nl eof))) ;; Nested items stop recursion here
+
+(define-peg-pattern nested-ordered-list all
+                    (+ nested-ordered-item))
 
 (define-peg-pattern ordered-list all
-                    (+ (or nested-ordered-item ordered-item)))
+                    (+ ordered-item)) ;; Base list only matches base items
 
 ;; =====================================================================
 ;; Fixed-Format / Export Blocks
