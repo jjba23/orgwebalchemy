@@ -265,8 +265,7 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 - Headings (lines  starting by n ~*~)
 - Paragraphs (any "non-special" text)
-- Unordered, Ordered and Description lists
-- Nested lists
+- Unordered, Ordered and Description lists (with any level of nesting)
 - Italic, Bold, Inline Code
 - Links with and without description (with nested parsing)
 - Horizontal separators (~--------~) five or more dashes
