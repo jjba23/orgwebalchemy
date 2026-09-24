@@ -257,7 +257,7 @@ preserving raw HTML nodes."
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
-
+      
       ;; Headings
       (('heading ('stars s)
         ('line-content text))
@@ -270,7 +270,7 @@ preserving raw HTML nodes."
 
       ;; Horizontal Separator
       (('separator sep-content)
-       `(hr))
+       `(hr ,@(make-sxml-attrs (separator-classes))))
 
       ;; Description lists
       (('description-list items ...)
@@ -342,10 +342,6 @@ preserving raw HTML nodes."
       ;; they are not escaped or interpreted as Org markup.
       (('export-html-block ('export-html-content html))
        `(raw-html ,html))
-
-      ;; Horizontal rule
-      (('horizontal-rule)
-       `(hr ,@(make-sxml-attrs (separator-classes))))
 
       ;; Tables
       (('table items ...)
