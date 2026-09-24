@@ -148,6 +148,11 @@
                (assert-equal #:got (org->html "- Term :: Definition text")
                              #:expect
                              "<dl><dt>Term</dt><dd>Definition text</dd></dl>"))
+         (test "nested description list transformation"
+               (assert-equal #:got (org->html "- Term :: Definition text
+  - Term2 :: Def2")
+                #:expect
+                "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))
          (test "special blocks: quote, example, src, export, separator"
                (assert-equal #:got (org->html
                                               "#+BEGIN_QUOTE\nQuoted *text*\n#+END_QUOTE")
