@@ -169,10 +169,6 @@
 ;; List Items & Recursive List Containers
 ;; =====================================================================
 
-;; =====================================================================
-;; List Items & Recursive List Containers
-;; =====================================================================
-
 (define-peg-pattern list-bullet none
                     (or "-" "+"))
 
@@ -185,7 +181,8 @@
 ;; It greedily grabs "digit(s)" optionally followed by ".digit(s)"
 (define-peg-pattern hierarchical-num none
                     (and (+ digit)
-                         (* (and "." (+ digit)))))
+                         (* (and "."
+                                 (+ digit)))))
 
 ;; An ordered list bullet is either a hierarchical number or alphabetical characters,
 ;; followed by a period or a closing parenthesis.
@@ -203,89 +200,35 @@
 (define-peg-pattern desc-key all
                     (+ (and (not-followed-by (or nl desc-sep eof)) peg-any)))
 
-(define-peg-pattern nested-indent none
-                    (and "  "
-                         (* ws)))
-
-;; 1. Sub-lists MUST ONLY match nested lists to stop sibling swallowing.
-(define-peg-pattern sub-list body
-                    (or nested-description-list nested-unordered-list nested-ordered-list))
-
-;; --- Description Lists ---
+(define-peg-pattern item-indent body
+                    (* (or " " "\t")))
 
 (define-peg-pattern desc-item all
-                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
-                         (* ws)
+                    (and item-indent
                          (or list-bullet list-num)
                          (+ ws)
                          desc-key
                          desc-sep
                          line-content
-                         (or nl eof)
-                         (* sub-list)))
-
-(define-peg-pattern nested-desc-item all
-                    (and nested-indent
-                         (or list-bullet list-num)
-                         (+ ws)
-                         desc-key
-                         desc-sep
-                         line-content
-                         (or nl eof))) ;; Nested items stop recursion here
-
-(define-peg-pattern nested-description-list all
-                    (+ nested-desc-item))
-
-(define-peg-pattern description-list all
-                    (+ desc-item)) ;; Base list only matches base items
-
-;; --- Unordered Lists ---
+                         (or nl eof)))
 
 (define-peg-pattern unordered-item all
-                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
-                         (* ws)
-                         list-bullet
-                         (+ ws)
-                         line-content
-                         (or nl eof)
-                         (* sub-list)))
-
-(define-peg-pattern nested-unordered-item all
-                    (and nested-indent
-                         list-bullet
-                         (+ ws)
-                         line-content
-                         (or nl eof))) ;; Nested items stop recursion here
-
-(define-peg-pattern nested-unordered-list all
-                    (+ nested-unordered-item))
-
-(define-peg-pattern unordered-list all
-                    (+ unordered-item)) ;; Base list only matches base items
-
-;; --- Ordered Lists ---
+                    (and item-indent list-bullet
+                         (+ ws) line-content
+                         (or nl eof)))
 
 (define-peg-pattern ordered-item all
-                    (and (not-followed-by nested-indent) ;; Base items reject nested indent
-                         (* ws)
-                         list-num
-                         (+ ws)
-                         line-content
-                         (or nl eof)
-                         (* sub-list)))
+                    (and item-indent list-num
+                         (+ ws) line-content
+                         (or nl eof)))
 
-(define-peg-pattern nested-ordered-item all
-                    (and nested-indent
-                         list-num
-                         (+ ws)
-                         line-content
-                         (or nl eof))) ;; Nested items stop recursion here
-
-(define-peg-pattern nested-ordered-list all
-                    (+ nested-ordered-item))
-
+;; The top-level lists are just flat sequences of items
+(define-peg-pattern description-list all
+                    (+ desc-item))
+(define-peg-pattern unordered-list all
+                    (+ unordered-item))
 (define-peg-pattern ordered-list all
-                    (+ ordered-item)) ;; Base list only matches base items
+                    (+ ordered-item))
 
 ;; =====================================================================
 ;; Fixed-Format / Export Blocks
@@ -527,6 +470,72 @@
                     (* inline-element))
 
 ;; =====================================================================
+;; Helpers
+;; =====================================================================
+
+;; Recursively walk the AST and process any flat lists
+(define (process-ast ast)
+  (match ast
+    (((quote unordered-list) . items) (cons 'unordered-list
+                                            (car (build-list-tree items 0))))
+    (((quote ordered-list) . items) (cons 'ordered-list
+                                          (car (build-list-tree items 0))))
+    (((quote description-list) . items) (cons 'description-list
+                                              (car (build-list-tree items 0))))
+    ((node-type . children) (if (list? children)
+                                (cons node-type
+                                      (map process-ast children)) ast))
+    (other other)))
+
+;; If the first element inside the item is a string, measure its length.
+;; Otherwise (no indentation string present), return 0.
+(define (get-indent item)
+  (match item
+    ((_ (? string? spaces) . _) (string-length spaces))
+    (_ 0)))
+
+;; Strip the leading indentation string from the AST node
+(define (strip-indent item)
+  (match item
+    ((tag (? string? spaces) . contents) (cons tag contents))
+    (other other)))
+
+;; Recursive function to fold flat items into a tree
+(define (build-list-tree items depth)
+  (let loop
+    ((items items)
+     (acc '()))
+    (if (null? items)
+        ;; Return nested structure and remaining unparsed items
+        (cons (reverse acc)
+              '())
+        (let ((item-depth (get-indent (car items))))
+          (cond
+            ;; If depth decreases, we are done with this nested level
+            ((< item-depth depth)
+             (cons (reverse acc) items))
+
+            ;; If depth increases, we recurse and append to the PREVIOUS item
+            ((> item-depth depth)
+             (if (null? acc)
+                 ;; Fallback for strangely formatted first-items
+                 (loop (cdr items)
+                       (cons (strip-indent (car items)) acc))
+                 (match (build-list-tree items item-depth)
+                   ((sub-items . rest) (let* ((prev-item (car acc))
+                                              ;; Attach the newly nested list into the previous item
+                                              (updated-prev (append prev-item
+                                                                    (list (cons 'nested-list
+                                                                           sub-items)))))
+                                         (loop rest
+                                               (cons updated-prev
+                                                     (cdr acc))))))))
+
+            ;; Same depth, just add to accumulator and continue
+            (else (loop (cdr items)
+                        (cons (strip-indent (car items)) acc))))))))
+
+;; =====================================================================
 ;; Parser Entry Point
 ;; =====================================================================
 
@@ -540,8 +549,9 @@
 
 (define (org->ast str)
   "Convert an Org-mode string directly into an AST with nested list structures."
-  (let ((ast (peg:tree (match-pattern org-doc str))))
+  (let* ((ast (peg:tree (match-pattern org-doc str)))
+         (processed-ast (process-ast ast)))
     ;; (newline)
-    ;; (pretty-print ast)
+    ;; (pretty-print processed-ast)
     ;; (newline)
-    ast))
+    processed-ast))
