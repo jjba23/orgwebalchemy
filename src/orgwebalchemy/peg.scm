@@ -104,7 +104,7 @@
                          (* "-")
                          (* ws) eol))
 
-;; FIX: Wrap stars in a `body` pattern so they are retained in the AST
+;; Wrap stars in a `body` pattern so they are retained in the AST
 (define-peg-pattern heading-stars body
                     (+ "*"))
 (define-peg-pattern heading all
@@ -245,7 +245,7 @@
 ;; Paragraphs
 ;; ======================================================================
 
-;; FIX: Require whitespace after block starters so that paragraphs
+;; Require whitespace after block starters so that paragraphs
 ;; starting with `*bold*` aren't mistakenly discarded.
 (define-peg-pattern special-starts none
                     (or (and (+ "*") ws)
@@ -305,10 +305,33 @@
 (define-peg-pattern inline-link-no-desc all
                     (and link-open link-target-content link-close))
 
+(define-peg-pattern url-scheme all
+  (or "http://"
+      "https://"
+      "ftp://"
+      "ftps://"
+      "file://"
+      "ssh://"
+      "sftp://"
+      "ws://"
+      "wss://"
+      "git://"
+      "gopher://"
+      "tel:"
+      "mailto:"
+      "irc://"
+      "ircs://"))
+
+(define-peg-pattern inline-raw-url all
+  (and url-scheme
+       (+ (and (not-followed-by (or ws nl))
+               peg-any))))
+
 (define-peg-pattern inline-special body
                     (or inline-escape
                         inline-link-with-desc
                         inline-link-no-desc
+                        inline-raw-url
                         inline-code
                         inline-verbatim
                         inline-italic
