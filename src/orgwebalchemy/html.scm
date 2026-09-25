@@ -200,7 +200,7 @@ preserving raw HTML nodes."
     (match node
       
       ;; Headings
-      (('heading ('stars s)
+      (('heading (? string? s)
         ('line-content text))
        (let* ((lvl (string-length s))
               (tag (string->symbol (format #f "h~a" lvl)))

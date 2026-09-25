@@ -24,14 +24,41 @@
   #:export (org->ast inline-org->ast))
 
 ;; =====================================================================
-;; Org-mode PEG (Parsing Expression Grammar)
+;; Macros for PEG Pattern Generation
 ;; =====================================================================
-;;
-;; some tips for `define-peg-pattern'
-;; 'none' means these match in the string but won't appear in the final AST.
-;; 'body' means the node itself is omitted, but its matched children bubble up.
-;; 'all' means both the tag and the matched string/children are kept in the AST.
-;;
+
+(define-syntax-rule (define-block-pattern name begin-pat end-pat content-pat)
+  (begin
+    (define-peg-pattern content-pat all
+                        (* (and (not-followed-by end-pat) peg-any)))
+    (define-peg-pattern name all
+                        (and begin-pat
+                             eol
+                             content-pat
+                             end-pat
+                             (* ws)
+                             eol))))
+
+(define-syntax-rule (define-inline-markup name name-delim name-body
+                                          name-content delim)
+  (begin
+    (define-peg-pattern name-delim none delim)
+    (define-peg-pattern name-body body
+                        (or (and (not-followed-by (or delim " " "\t" nl))
+                                 peg-any)
+                            (and (or " " "\t")
+                                 (not-followed-by (or delim nl)))))
+    (define-peg-pattern name-content all
+                        (+ name-body))
+    (define-peg-pattern name body
+                        (and name-delim
+                             (not-followed-by (or " " "\t" nl)) name-content
+                             name-delim))))
+
+(define-syntax-rule (define-list-item name marker)
+  (define-peg-pattern name all
+                      (and item-indent marker
+                           (+ ws) line-content eol)))
 
 ;; =====================================================================
 ;; Character & Whitespace Primitives
@@ -43,6 +70,8 @@
                     (or " " "\t"))
 (define-peg-pattern eof none
                     (not-followed-by peg-any))
+(define-peg-pattern eol none
+                    (or nl eof))
 (define-peg-pattern digit none
                     (range #\0 #\9))
 
@@ -70,98 +99,57 @@
 (define-peg-pattern empty-line none
                     (and (* ws) nl))
 
-;; =====================================================================
-;; Horizontal Rules / Separators
-;; =====================================================================
-
-;; Org-mode horizontal rule:
-;;
-;;   -----
-;;   ----------
-;;     --------
-;;   -----
-;;
-;; A separator consists of at least five hyphens, optionally surrounded
-;; by whitespace, followed by a newline or EOF.
-
 (define-peg-pattern separator all
                     (and (* ws) "-----"
                          (* "-")
-                         (* ws)
-                         (or nl eof)))
+                         (* ws) eol))
 
-;; =====================================================================
-;; Block Level Elements
-;; =====================================================================
-
-;; Headings (*, **, ***)
-(define-peg-pattern heading all
-                    (and stars
-                         (+ ws) line-content
-                         (or nl eof)))
-(define-peg-pattern stars all
+;; FIX: Wrap stars in a `body` pattern so they are retained in the AST
+(define-peg-pattern heading-stars body
                     (+ "*"))
+(define-peg-pattern heading all
+                    (and heading-stars
+                         (+ ws) line-content eol))
 
 ;; =====================================================================
 ;; Tables
 ;; =====================================================================
 
-;; A table is delimited by vertical bar.
 (define-peg-pattern table-sep none "|")
-
-;; A table must start with a vertical bar.
-(define-peg-pattern table-start none "|")
-
-;; A table cell is everything up to the next `|`, newline, or EOF.
-(define-peg-pattern table-cell all
-                    (* (and (not-followed-by (or table-sep nl eof)) peg-any)))
-
 (define-peg-pattern table-column-sep none "+")
+(define-peg-pattern table-cell all
+                    (* (and (not-followed-by (or table-sep eol)) peg-any)))
 
-;; Properly consumes the optional closing pipe, trailing spaces, and the newline.
 (define-peg-pattern table-row-end none
                     (or (and table-sep
-                             (* ws)
-                             (or nl eof))
-                        (and (* ws)
-                             (or nl eof))))
+                             (* ws) eol)
+                        (and (* ws) eol)))
 
-;; A normal table row.
-;; We use `(followed-by table-sep)` to ensure it starts with a pipe without
-;; creating an extra nesting layer. The single `*` loop flattens the cells nicely.
-(define-peg-pattern table-row all
+(define-peg-pattern table-row-cells body
                     (and (followed-by table-sep)
                          (* (and table-sep
                                  (not-followed-by table-row-end) table-cell))
                          table-row-end))
 
-;; A table separator cell consists of dashes, optionally surrounded
-;; by whitespace.
+(define-peg-pattern table-row all table-row-cells)
+
 (define-peg-pattern table-separator-cell none
                     (and (* ws)
                          (+ "-")
                          (* ws)))
 
-;; A separator row:
-;; Ends properly using `table-row-end` so it doesn't leave unconsumed newlines.
 (define-peg-pattern table-separator-row all
                     (and table-sep table-separator-cell
                          (* (and table-column-sep table-separator-cell))
                          table-row-end))
 
-;; A header row is a normal row immediately followed by a table separator row.
 (define-peg-pattern table-header-row all
-                    (and (followed-by table-sep)
-                         (* (and table-sep
-                                 (not-followed-by table-row-end) table-cell))
-                         table-row-end
+                    (and table-row-cells
                          (followed-by table-separator-row)))
 
-;; Update table-line to recognize header rows first.
 (define-peg-pattern table-line body
                     (or table-header-row table-separator-row table-row))
 
-;; A complete table consists of one or more consecutive table lines.
 (define-peg-pattern table all
                     (+ table-line))
 
@@ -171,35 +159,23 @@
 
 (define-peg-pattern list-bullet none
                     (or "-" "+"))
-
-;; Recognize upper and lower case letters
 (define-peg-pattern alpha none
                     (or (range #\a #\z)
                         (range #\A #\Z)))
-
-;; Recognize digits separated by dots (e.g., "1", "1.1", "1.2.3")
-;; It greedily grabs "digit(s)" optionally followed by ".digit(s)"
 (define-peg-pattern hierarchical-num none
                     (and (+ digit)
                          (* (and "."
                                  (+ digit)))))
-
-;; An ordered list bullet is either a hierarchical number or alphabetical characters,
-;; followed by a period or a closing parenthesis.
 (define-peg-pattern list-num none
                     (and (or hierarchical-num
                              (+ alpha))
                          (or "." ")")))
-
 (define-peg-pattern desc-sep none
                     (and (+ ws) "::"
                          (or (+ ws)
-                             (followed-by nl)
-                             (followed-by eof))))
-
+                             (followed-by eol))))
 (define-peg-pattern desc-key all
                     (+ (and (not-followed-by (or nl desc-sep eof)) peg-any)))
-
 (define-peg-pattern item-indent body
                     (* (or " " "\t")))
 
@@ -210,19 +186,11 @@
                          desc-key
                          desc-sep
                          line-content
-                         (or nl eof)))
+                         eol))
 
-(define-peg-pattern unordered-item all
-                    (and item-indent list-bullet
-                         (+ ws) line-content
-                         (or nl eof)))
+(define-list-item unordered-item list-bullet)
+(define-list-item ordered-item list-num)
 
-(define-peg-pattern ordered-item all
-                    (and item-indent list-num
-                         (+ ws) line-content
-                         (or nl eof)))
-
-;; The top-level lists are just flat sequences of items
 (define-peg-pattern description-list all
                     (+ desc-item))
 (define-peg-pattern unordered-list all
@@ -234,70 +202,30 @@
 ;; Fixed-Format / Export Blocks
 ;; =====================================================================
 
-;; #+BEGIN_QUOTE ... #+END_QUOTE
 (define-peg-pattern begin-quote none
                     (or "#+BEGIN_QUOTE" "#+begin_quote"))
-
 (define-peg-pattern end-quote none
                     (or "#+END_QUOTE" "#+end_quote"))
+(define-block-pattern quote-block begin-quote end-quote quote-content)
 
-;; #+BEGIN_EXAMPLE ... #+END_EXAMPLE
 (define-peg-pattern begin-example none
                     (or "#+BEGIN_EXAMPLE" "#+begin_example"))
-
 (define-peg-pattern end-example none
                     (or "#+END_EXAMPLE" "#+end_example"))
+(define-block-pattern example-block begin-example end-example example-content)
 
-;; #+BEGIN_EXPORT html ... #+END_EXPORT
 (define-peg-pattern begin-export-html none
                     (or "#+BEGIN_EXPORT html" "#+begin_export html"
                         "#+BEGIN_EXPORT HTML" "#+begin_export HTML"))
-
 (define-peg-pattern end-export none
                     (or "#+END_EXPORT" "#+end_export"))
-
-(define-peg-pattern quote-content all
-                    (* (and (not-followed-by end-quote) peg-any)))
-
-(define-peg-pattern example-content all
-                    (* (and (not-followed-by end-example) peg-any)))
-
-(define-peg-pattern export-html-content all
-                    (* (and (not-followed-by end-export) peg-any)))
-
-(define-peg-pattern quote-block all
-                    (and begin-quote
-                         (or nl eof)
-                         quote-content
-                         end-quote
-                         (* ws)
-                         (or nl eof)))
-
-(define-peg-pattern example-block all
-                    (and begin-example
-                         (or nl eof)
-                         example-content
-                         end-example
-                         (* ws)
-                         (or nl eof)))
-
-(define-peg-pattern export-html-block all
-                    (and begin-export-html
-                         (or nl eof)
-                         export-html-content
-                         end-export
-                         (* ws)
-                         (or nl eof)))
-
-;; =====================================================================
-;; Source Blocks (#+BEGIN_SRC ... #+END_SRC)
-;; =====================================================================
+(define-block-pattern export-html-block begin-export-html end-export
+                      export-html-content)
 
 (define-peg-pattern begin-src none
                     (or "#+BEGIN_SRC" "#+begin_src"))
 (define-peg-pattern end-src none
                     (or "#+END_SRC" "#+end_src"))
-
 (define-peg-pattern lang all
                     (* (and (not-followed-by nl) peg-any)))
 
@@ -309,124 +237,64 @@
                          src-content
                          end-src
                          (* ws)
-                         (or nl eof)))
-
+                         eol))
 (define-peg-pattern src-content all
                     (* (and (not-followed-by end-src) peg-any)))
 
 ;; ======================================================================
-;; Paragraphs (Fallback: lines not starting with special markup)
+;; Paragraphs
 ;; ======================================================================
+
+;; FIX: Require whitespace after block starters so that paragraphs
+;; starting with `*bold*` aren't mistakenly discarded.
 (define-peg-pattern special-starts none
-                    (or "*"
-                        "-"
-                        "+"
-                        "#+"
+                    (or (and (+ "*") ws)
+                        (and (or "-" "+") ws)
                         (and (+ digit)
-                             (or "." ")"))
+                             (or "." ")") ws)
+                        "#+"
                         separator
-                        (and (* ws) nl)))
+                        empty-line))
 
 (define-peg-pattern paragraph all
-                    (and (not-followed-by special-starts) line-content
-                         (or nl eof)))
+                    (and (not-followed-by special-starts) line-content eol))
 
 (define-peg-pattern line-content all
-                    (* (and (not-followed-by (or nl eof)) peg-any)))
+                    (* (and (not-followed-by eol) peg-any)))
 
 ;; =====================================================================
 ;; Inline Org Markup
 ;; =====================================================================
 
-;; Escaped characters
 (define-peg-pattern inline-escape body
-                    (and "\\" inline-escaped-character))
+                    (and "\\"
+                         (or "*"
+                             "/"
+                             "_"
+                             "~"
+                             "="
+                             "["
+                             "]"
+                             "\\")))
 
-(define-peg-pattern inline-escaped-character all
-                    (or "*"
-                        "/"
-                        "_"
-                        "~"
-                        "="
-                        "["
-                        "]"
-                        "\\"))
+(define-inline-markup inline-code inline-code-delimiter inline-code-body
+                      inline-code-content "~")
+(define-inline-markup inline-verbatim inline-verbatim-delimiter
+                      inline-verbatim-body inline-verbatim-content "=")
+(define-inline-markup inline-italic inline-italic-delimiter inline-italic-body
+                      inline-italic-content "/")
+(define-inline-markup inline-bold inline-bold-delimiter inline-bold-body
+                      inline-bold-content "*")
+(define-inline-markup inline-underline inline-underline-delimiter
+                      inline-underline-body inline-underline-content "_")
 
-;; Code: ~code~
-(define-peg-pattern inline-code-delimiter none "~")
-(define-peg-pattern inline-code-body body
-                    (or (and (not-followed-by (or "~" " " "\t" nl)) peg-any)
-                        (and (or " " "\t")
-                             (not-followed-by (or "~" nl)))))
-(define-peg-pattern inline-code-content all
-                    (+ inline-code-body))
-(define-peg-pattern inline-code body
-                    (and inline-code-delimiter
-                         (not-followed-by (or " " "\t" nl))
-                         inline-code-content inline-code-delimiter))
-
-;; Verbatim: =verbatim=
-(define-peg-pattern inline-verbatim-delimiter none "=")
-(define-peg-pattern inline-verbatim-body body
-                    (or (and (not-followed-by (or "=" " " "\t" nl)) peg-any)
-                        (and (or " " "\t")
-                             (not-followed-by (or "=" nl)))))
-(define-peg-pattern inline-verbatim-content all
-                    (+ inline-verbatim-body))
-(define-peg-pattern inline-verbatim body
-                    (and inline-verbatim-delimiter
-                         (not-followed-by (or " " "\t" nl))
-                         inline-verbatim-content inline-verbatim-delimiter))
-
-;; Italic: /italic/
-(define-peg-pattern inline-italic-delimiter none "/")
-(define-peg-pattern inline-italic-body body
-                    (or (and (not-followed-by (or "/" " " "\t" nl)) peg-any)
-                        (and (or " " "\t")
-                             (not-followed-by (or "/" nl)))))
-(define-peg-pattern inline-italic-content all
-                    (+ inline-italic-body))
-(define-peg-pattern inline-italic body
-                    (and inline-italic-delimiter
-                         (not-followed-by (or " " "\t" nl))
-                         inline-italic-content inline-italic-delimiter))
-
-;; Bold: *bold*
-(define-peg-pattern inline-bold-delimiter none "*")
-(define-peg-pattern inline-bold-body body
-                    (or (and (not-followed-by (or "*" " " "\t" nl)) peg-any)
-                        (and (or " " "\t")
-                             (not-followed-by (or "*" nl)))))
-(define-peg-pattern inline-bold-content all
-                    (+ inline-bold-body))
-(define-peg-pattern inline-bold body
-                    (and inline-bold-delimiter
-                         (not-followed-by (or " " "\t" nl))
-                         inline-bold-content inline-bold-delimiter))
-
-;; Underline: _underline_
-(define-peg-pattern inline-underline-delimiter none "_")
-(define-peg-pattern inline-underline-body body
-                    (or (and (not-followed-by (or "_" " " "\t" nl)) peg-any)
-                        (and (or " " "\t")
-                             (not-followed-by (or "_" nl)))))
-(define-peg-pattern inline-underline-content all
-                    (+ inline-underline-body))
-(define-peg-pattern inline-underline body
-                    (and inline-underline-delimiter
-                         (not-followed-by (or " " "\t" nl))
-                         inline-underline-content inline-underline-delimiter))
-
-;; Org links:
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
 (define-peg-pattern link-sep none "][")
-
 (define-peg-pattern link-target-content all
                     (+ (and (not-followed-by "]]")
                             (not-followed-by "][")
                             (not-followed-by nl) peg-any)))
-
 (define-peg-pattern link-description-content all
                     (+ (and (not-followed-by "]]")
                             (not-followed-by nl) peg-any)))
@@ -434,25 +302,10 @@
 (define-peg-pattern inline-link-with-desc all
                     (and link-open link-target-content link-sep
                          link-description-content link-close))
-
 (define-peg-pattern inline-link-no-desc all
                     (and link-open link-target-content link-close))
 
-;; Plain inline text.
-(define-peg-pattern inline-text all
-                    (+ (and (not-followed-by (or inline-escape
-                                                 inline-link-with-desc
-                                                 inline-link-no-desc
-                                                 inline-code
-                                                 inline-verbatim
-                                                 inline-italic
-                                                 inline-bold
-                                                 inline-underline
-                                                 nl
-                                                 eof)) peg-any)))
-
-;; One inline element.
-(define-peg-pattern inline-element body
+(define-peg-pattern inline-special body
                     (or inline-escape
                         inline-link-with-desc
                         inline-link-no-desc
@@ -460,10 +313,13 @@
                         inline-verbatim
                         inline-italic
                         inline-bold
-                        inline-underline
-                        inline-text))
+                        inline-underline))
 
-;; A complete inline sequence.
+(define-peg-pattern inline-text all
+                    (+ (and (not-followed-by (or inline-special eol)) peg-any)))
+
+(define-peg-pattern inline-element body
+                    (or inline-special inline-text))
 (define-peg-pattern inline-content body
                     (* inline-element))
 
@@ -471,65 +327,49 @@
 ;; Helpers
 ;; =====================================================================
 
-;; Recursively walk the AST and process any flat lists
 (define (process-ast ast)
   (match ast
-    (((quote unordered-list) . items) (cons 'unordered-list
-                                            (car (build-list-tree items 0))))
-    (((quote ordered-list) . items) (cons 'ordered-list
-                                          (car (build-list-tree items 0))))
-    (((quote description-list) . items) (cons 'description-list
-                                              (car (build-list-tree items 0))))
+    (((and list-type (or (quote unordered-list) (quote ordered-list) (quote description-list))) . items)
+     (cons list-type
+           (car (build-list-tree items 0))))
     ((node-type . children) (if (list? children)
                                 (cons node-type
                                       (map process-ast children)) ast))
     (other other)))
 
-;; If the first element inside the item is a string, measure its length.
-;; Otherwise (no indentation string present), return 0.
 (define (get-indent item)
   (match item
     ((_ (? string? spaces) . _) (string-length spaces))
     (_ 0)))
 
-;; Strip the leading indentation string from the AST node
 (define (strip-indent item)
   (match item
     ((tag (? string? spaces) . contents) (cons tag contents))
     (other other)))
 
-;; Recursive function to fold flat items into a tree
 (define (build-list-tree items depth)
   (let loop
     ((items items)
      (acc '()))
     (if (null? items)
-        ;; Return nested structure and remaining unparsed items
         (cons (reverse acc)
               '())
         (let ((item-depth (get-indent (car items))))
           (cond
-            ;; If depth decreases, we are done with this nested level
             ((< item-depth depth)
              (cons (reverse acc) items))
-
-            ;; If depth increases, we recurse and append to the PREVIOUS item
             ((> item-depth depth)
              (if (null? acc)
-                 ;; Fallback for strangely formatted first-items
                  (loop (cdr items)
                        (cons (strip-indent (car items)) acc))
                  (match (build-list-tree items item-depth)
                    ((sub-items . rest) (let* ((prev-item (car acc))
-                                              ;; Attach the newly nested list into the previous item
                                               (updated-prev (append prev-item
                                                                     (list (cons 'nested-list
                                                                            sub-items)))))
                                          (loop rest
                                                (cons updated-prev
                                                      (cdr acc))))))))
-
-            ;; Same depth, just add to accumulator and continue
             (else (loop (cdr items)
                         (cons (strip-indent (car items)) acc))))))))
 
@@ -538,18 +378,7 @@
 ;; =====================================================================
 
 (define (inline-org->ast text)
-  "Parse inline Org markup in TEXT."
-  (let ((ast (peg:tree (match-pattern inline-content text))))
-    ;; (newline)
-    ;; (pretty-print ast)
-    ;; (newline)
-    ast))
+  (peg:tree (match-pattern inline-content text)))
 
 (define (org->ast str)
-  "Convert an Org-mode string directly into an AST with nested list structures."
-  (let* ((ast (peg:tree (match-pattern org-doc str)))
-         (processed-ast (process-ast ast)))
-    ;; (newline)
-    ;; (pretty-print processed-ast)
-    ;; (newline)
-    processed-ast))
+  (process-ast (peg:tree (match-pattern org-doc str))))
