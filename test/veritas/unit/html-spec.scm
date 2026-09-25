@@ -89,6 +89,9 @@
                                                       "/italic/"))
                              #:expect "<em>italic</em>")
                (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "Unsure if Option A/B"))
+                             #:expect "Unsure if Option A/B")
+               (assert-equal #:got (inline-org->html (inline-org->ast
                                                       "_underlined_"))
                              #:expect "<u>underlined</u>")
                (assert-equal #:got (inline-org->html (inline-org->ast "~code~"))

@@ -441,15 +441,16 @@
 
 ;; Plain inline text.
 ;;
-;; Stop before the beginning of any inline construct.
+;; Stop before the beginning of any actual valid inline construct.
 (define-peg-pattern inline-text all
-                    (+ (and (not-followed-by (or "\\"
-                                                 "~"
-                                                 "="
-                                                 "/"
-                                                 "*"
-                                                 "_"
-                                                 "[["
+                    (+ (and (not-followed-by (or inline-escape
+                                                 inline-link-with-desc
+                                                 inline-link-no-desc
+                                                 inline-code
+                                                 inline-verbatim
+                                                 inline-italic
+                                                 inline-bold
+                                                 inline-underline
                                                  nl
                                                  eof)) peg-any)))
 
