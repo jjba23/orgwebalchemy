@@ -287,6 +287,7 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 * Projects that use Orgwebalchemy
 
 - LucidPlan :: https://codeberg.org/jjba23/lucidplan
+- WikiMusic ::  https://codeberg.org/jjba23/wikimusic
 
 --------------
 
