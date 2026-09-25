@@ -339,13 +339,6 @@
 ;; =====================================================================
 
 ;; Escaped characters
-;;
-;; Org uses a backslash to escape markup characters:
-;;
-;;   \*not bold*
-;;   \_not underline_
-;;   \~not code~
-;;
 (define-peg-pattern inline-escape body
                     (and "\\" inline-escaped-character))
 
@@ -361,64 +354,70 @@
 
 ;; Code: ~code~
 (define-peg-pattern inline-code-delimiter none "~")
-
+(define-peg-pattern inline-code-body body
+                    (or (and (not-followed-by (or "~" " " "\t" nl)) peg-any)
+                        (and (or " " "\t")
+                             (not-followed-by (or "~" nl)))))
 (define-peg-pattern inline-code-content all
-                    (+ (and (not-followed-by "~")
-                            (not-followed-by nl) peg-any)))
-
+                    (+ inline-code-body))
 (define-peg-pattern inline-code body
-                    (and inline-code-delimiter inline-code-content
-                         inline-code-delimiter))
+                    (and inline-code-delimiter
+                         (not-followed-by (or " " "\t" nl))
+                         inline-code-content inline-code-delimiter))
 
 ;; Verbatim: =verbatim=
 (define-peg-pattern inline-verbatim-delimiter none "=")
-
+(define-peg-pattern inline-verbatim-body body
+                    (or (and (not-followed-by (or "=" " " "\t" nl)) peg-any)
+                        (and (or " " "\t")
+                             (not-followed-by (or "=" nl)))))
 (define-peg-pattern inline-verbatim-content all
-                    (+ (and (not-followed-by "=")
-                            (not-followed-by nl) peg-any)))
-
+                    (+ inline-verbatim-body))
 (define-peg-pattern inline-verbatim body
-                    (and inline-verbatim-delimiter inline-verbatim-content
-                         inline-verbatim-delimiter))
+                    (and inline-verbatim-delimiter
+                         (not-followed-by (or " " "\t" nl))
+                         inline-verbatim-content inline-verbatim-delimiter))
 
 ;; Italic: /italic/
 (define-peg-pattern inline-italic-delimiter none "/")
-
+(define-peg-pattern inline-italic-body body
+                    (or (and (not-followed-by (or "/" " " "\t" nl)) peg-any)
+                        (and (or " " "\t")
+                             (not-followed-by (or "/" nl)))))
 (define-peg-pattern inline-italic-content all
-                    (+ (and (not-followed-by "/")
-                            (not-followed-by nl) peg-any)))
-
+                    (+ inline-italic-body))
 (define-peg-pattern inline-italic body
-                    (and inline-italic-delimiter inline-italic-content
-                         inline-italic-delimiter))
+                    (and inline-italic-delimiter
+                         (not-followed-by (or " " "\t" nl))
+                         inline-italic-content inline-italic-delimiter))
 
 ;; Bold: *bold*
 (define-peg-pattern inline-bold-delimiter none "*")
-
+(define-peg-pattern inline-bold-body body
+                    (or (and (not-followed-by (or "*" " " "\t" nl)) peg-any)
+                        (and (or " " "\t")
+                             (not-followed-by (or "*" nl)))))
 (define-peg-pattern inline-bold-content all
-                    (+ (and (not-followed-by "*")
-                            (not-followed-by nl) peg-any)))
-
+                    (+ inline-bold-body))
 (define-peg-pattern inline-bold body
-                    (and inline-bold-delimiter inline-bold-content
-                         inline-bold-delimiter))
+                    (and inline-bold-delimiter
+                         (not-followed-by (or " " "\t" nl))
+                         inline-bold-content inline-bold-delimiter))
 
 ;; Underline: _underline_
 (define-peg-pattern inline-underline-delimiter none "_")
-
+(define-peg-pattern inline-underline-body body
+                    (or (and (not-followed-by (or "_" " " "\t" nl)) peg-any)
+                        (and (or " " "\t")
+                             (not-followed-by (or "_" nl)))))
 (define-peg-pattern inline-underline-content all
-                    (+ (and (not-followed-by "_")
-                            (not-followed-by nl) peg-any)))
-
+                    (+ inline-underline-body))
 (define-peg-pattern inline-underline body
-                    (and inline-underline-delimiter inline-underline-content
-                         inline-underline-delimiter))
+                    (and inline-underline-delimiter
+                         (not-followed-by (or " " "\t" nl))
+                         inline-underline-content inline-underline-delimiter))
 
 ;; Org links:
-;;
-;;   [[https://example.com][Example]]
-;;   [[https://example.com]]
-;;
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
 (define-peg-pattern link-sep none "][")
@@ -440,8 +439,6 @@
                     (and link-open link-target-content link-close))
 
 ;; Plain inline text.
-;;
-;; Stop before the beginning of any actual valid inline construct.
 (define-peg-pattern inline-text all
                     (+ (and (not-followed-by (or inline-escape
                                                  inline-link-with-desc

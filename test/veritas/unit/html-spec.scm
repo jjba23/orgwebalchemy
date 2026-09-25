@@ -92,6 +92,11 @@
                                                       "Unsure if Option A/B"))
                              #:expect "Unsure if Option A/B")
                (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "cron job / shepherd timer that does git fetch --all for work and =~/hacking="))
+                #:expect
+                "cron job / shepherd timer that does git fetch --all for work and <code>~/hacking</code>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
                                                       "_underlined_"))
                              #:expect "<u>underlined</u>")
                (assert-equal #:got (inline-org->html (inline-org->ast "~code~"))
