@@ -166,6 +166,12 @@ preserving raw HTML nodes."
                               `((href ,url)))
            ,url))
 
+      ;; URL
+      (('inline-raw-url ('url-scheme scheme) url)
+       `(a ,@(make-sxml-attrs (link-classes)
+                              `((href ,(format #f "~a~a" scheme url))))
+           ,(format #f "~a~a" scheme url)))
+
       ;; Plain text
       (('inline-text text)
        text)

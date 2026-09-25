@@ -261,9 +261,155 @@
                 #:expect
                 "<dl><dt>Term</dt><dd>Definition text<dl><dt>Term2</dt><dd>Def2</dd></dl></dd></dl>"))))
 
-;; =======================================================================
-;; Runner Specification
-;; =======================================================================
+(define inline-url-suite
+  (suite "Inline Raw URL Transformation"
+         (test "supports all HTTP and file transfer protocols"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "http://example.org"))
+                #:expect
+                "<a href=\"http://example.org\">http://example.org</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "https://example.org"))
+                #:expect
+                "<a href=\"https://example.org\">https://example.org</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "ftp://example.org/file.txt"))
+                #:expect
+                "<a href=\"ftp://example.org/file.txt\">ftp://example.org/file.txt</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "ftps://example.org/file.txt"))
+                #:expect
+                "<a href=\"ftps://example.org/file.txt\">ftps://example.org/file.txt</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "file:///home/user/document.org"))
+                #:expect
+                "<a href=\"file:///home/user/document.org\">file:///home/user/document.org</a>"))
+
+         (test "supports remote access and network protocols"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "ssh://git@example.org/repo"))
+                #:expect
+                "<a href=\"ssh://git@example.org/repo\">ssh://git@example.org/repo</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "sftp://example.org/path/to/file"))
+                #:expect
+                "<a href=\"sftp://example.org/path/to/file\">sftp://example.org/path/to/file</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "git://example.org/project.git"))
+                #:expect
+                "<a href=\"git://example.org/project.git\">git://example.org/project.git</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "gopher://example.org/1/hello"))
+                #:expect
+                "<a href=\"gopher://example.org/1/hello\">gopher://example.org/1/hello</a>"))
+
+         (test "supports WebSocket protocols"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "ws://example.org/socket"))
+                #:expect
+                "<a href=\"ws://example.org/socket\">ws://example.org/socket</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "wss://example.org/socket"))
+                #:expect
+                "<a href=\"wss://example.org/socket\">wss://example.org/socket</a>"))
+
+         (test "supports communication protocols"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "tel:+31612345678"))
+                #:expect "<a href=\"tel:+31612345678\">tel:+31612345678</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "mailto:jjbigorra@gmail.com"))
+                #:expect
+                "<a href=\"mailto:jjbigorra@gmail.com\">mailto:jjbigorra@gmail.com</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "irc://irc.example.org/#emacs"))
+                #:expect
+                "<a href=\"irc://irc.example.org/#emacs\">irc://irc.example.org/#emacs</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "ircs://irc.example.org/#emacs"))
+                #:expect
+                "<a href=\"ircs://irc.example.org/#emacs\">ircs://irc.example.org/#emacs</a>"))
+
+         (test "supports URLs with paths, queries, fragments and ports"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "https://example.org:8443/path/to/page"))
+                #:expect
+                "<a href=\"https://example.org:8443/path/to/page\">https://example.org:8443/path/to/page</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "https://example.org/search?q=org-mode&lang=en"))
+                #:expect
+                "<a href=\"https://example.org/search?q=org-mode&amp;lang=en\">https://example.org/search?q=org-mode&amp;lang=en</a>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "https://example.org/page#section"))
+                #:expect
+                "<a href=\"https://example.org/page#section\">https://example.org/page#section</a>"))
+
+         (test "URLs can appear inside ordinary prose"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "Visit https://example.org for more information."))
+                #:expect
+                "Visit <a href=\"https://example.org\">https://example.org</a> for more information.")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "Clone git://example.org/project.git and build it."))
+                #:expect
+                "Clone <a href=\"git://example.org/project.git\">git://example.org/project.git</a> and build it."))
+
+         (test "URLs stop at whitespace"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "See https://example.org here."))
+                #:expect
+                "See <a href=\"https://example.org\">https://example.org</a> here.")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "See https://example.org\tfor details."))
+                #:expect
+                "See <a href=\"https://example.org\">https://example.org</a>\tfor details."))
+
+         (test "URLs stop at a newline"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "https://example.org\nhttps://gnu.org"))
+                #:expect
+                "<a href=\"https://example.org\">https://example.org</a>"))
+
+         (test "URLs coexist with inline Org markup"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "*Visit https://example.org*"))
+                #:expect
+                "<strong>Visit <a href=\"https://example.org\">https://example.org</a></strong>")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "See https://example.org and *bold* text."))
+                #:expect
+                "See <a href=\"https://example.org\">https://example.org</a> and <strong>bold</strong> text."))
+
+         (test "raw URLs and Org links coexist"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "Visit https://example.org or [[https://gnu.org][GNU]]."))
+                #:expect
+                "Visit <a href=\"https://example.org\">https://example.org</a> or <a href=\"https://gnu.org\">GNU</a>."))
+
+         (test "does not treat unsupported schemes as raw URLs"
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "custom://example.org"))
+                             #:expect "custom://example.org")
+
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "javascript:alert(1)"))
+                             #:expect "javascript:alert(1)"))))
 
 (define (spec)
   (veritas-run make-sxml-attrs-suite
@@ -273,4 +419,5 @@
                parameterized-classes-suite
                sxml-rendering-suite
                org-to-html-suite
+               inline-url-suite
                list-to-html-suite))
