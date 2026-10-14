@@ -141,13 +141,27 @@
     (('inline-line-break _)
      "  \n")
 
-    ;; [[URL][description]] and [[URL]]
+    ;; [[target][description]] and [[target]].  An image link becomes
+    ;; Markdown's ![alt](src); every other link uses the href the shared link
+    ;; classifier produced, so `file:' links lose their prefix and `*Heading'
+    ;; links become the fragment Markdown renderers slug the heading to.
     (('inline-link-with-desc ('link-target-content url)
       ('link-description-content description))
-     (format #f "[~a](~a)"
-             (inline-render-token description) url))
+     (if (org-image-link? url)
+         (format #f "![~a](~a)"
+                 (inline-render-token description)
+                 (org-link-href url))
+         (format #f "[~a](~a)"
+                 (inline-render-token description)
+                 (org-link-href url))))
     (('inline-link-no-desc ('link-target-content url))
-     (format #f "[~a](~a)" url url))
+     (if (org-image-link? url)
+         (format #f "![~a](~a)"
+                 (org-link-display url)
+                 (org-link-href url))
+         (format #f "[~a](~a)"
+                 (org-link-display url)
+                 (org-link-href url))))
 
     ;; Bare URL in prose, as a Markdown autolink.
     (('inline-raw-url ('url-scheme scheme) rest)

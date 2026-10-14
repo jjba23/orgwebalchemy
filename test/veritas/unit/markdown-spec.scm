@@ -174,10 +174,33 @@
                (assert-matches #:pattern "# Top Level Heading"
                                #:got (org->markdown sample-org-text)))))
 
+(define links-and-images-markdown-suite
+  (suite "Links and images in Markdown"
+         (test "an image link becomes a Markdown image"
+               (assert-equal #:expect "![a photo](photo.png)\n\n"
+                             #:got (org->markdown
+                                    "[[file:photo.png][a photo]]"))
+               (assert-equal #:expect
+                             "![images/diagram.svg](images/diagram.svg)
+
+"
+                             #:got (org->markdown "[[images/diagram.svg]]")))
+         (test "file links lose their file: prefix"
+               (assert-equal #:expect "[notes](notes.org)\n\n"
+                             #:got (org->markdown "[[file:notes.org][notes]]"))
+               (assert-equal #:expect "[notes.org](notes.org)\n\n"
+                             #:got (org->markdown "[[notes.org]]")))
+         (test "a heading link becomes the heading slug"
+               (assert-equal #:expect "[up](#notes)\n\n"
+                             #:got (org->markdown "[[*Notes][up]]"))
+               (assert-equal #:expect "[there](#custom-id)\n\n"
+                             #:got (org->markdown "[[#custom-id][there]]")))))
+
 (define (spec)
   (veritas-run inline-markdown-suite
                block-markdown-suite
                nested-markdown-suite
                mixed-list-suite
                fixtures->markdown-suite
+               links-and-images-markdown-suite
                document-markdown-suite))

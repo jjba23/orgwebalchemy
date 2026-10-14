@@ -33,6 +33,16 @@
 (define sample-org-features
   (slurp "test/fixtures/sample-org-features.org"))
 
+;; The whole-document tests need these values, and `veritas' collects the
+;; assertions of a test by filtering the test body for procedures: a `let'
+;; around the assertions would leave only the last one visible, so the values
+;; are bound here and the assertions stay at the top level of the test.
+(define feature-ast
+  (org->ast sample-org-features))
+
+(define readme-ast
+  (org->ast (slurp "README.org")))
+
 (define (nodes str)
   "Return the top-level AST of @var{str} as a list, even for a single element."
   (let ((ast (org->ast str)))
@@ -166,20 +176,18 @@
 (define whole-document-suite
   (suite "Whole-document parsing"
          (test "the feature fixture is parsed all the way to the end"
-               (let ((ast (org->ast sample-org-features)))
-                 (assert-length #:expect 27
-                                #:got ast)
-                 (assert-not-empty #:got ast)
-                 (assert-eq #:expect 'keyword
-                            #:got (car (car ast)))))
+               (assert-length #:expect 33
+                              #:got feature-ast)
+               (assert-not-empty #:got feature-ast)
+               (assert-eq #:expect 'keyword
+                          #:got (car (car feature-ast))))
          (test "the project's own README starts with a keyword and is long"
-               (let ((ast (org->ast (slurp "README.org"))))
-                 (assert-not-empty #:got ast)
-                 (assert-in-range #:min 100
-                                  #:max 10000
-                                  #:got (length ast))
-                 (assert-eq #:expect 'keyword
-                            #:got (car (car ast)))))))
+               (assert-not-empty #:got readme-ast)
+               (assert-in-range #:min 100
+                                #:max 10000
+                                #:got (length readme-ast))
+               (assert-eq #:expect 'keyword
+                          #:got (car (car readme-ast))))))
 
 (define mixed-list-suite
   (suite "Mixed and nested lists"
@@ -197,6 +205,7 @@
                                                                  (nested-list (ordered-item
                                                                                (line-content
                                                                                 "n1"))
+
                                                                               
                                                                               (ordered-item
                                                                                (line-content
@@ -208,10 +217,12 @@
                                                                  (nested-list (unordered-item
                                                                                (line-content
                                                                                 "b"))
+
                                                                               
                                                                               (ordered-item
                                                                                (line-content
                                                                                 "c"))
+
                                                                               
                                                                               (unordered-item
                                                                                (line-content
@@ -223,6 +234,7 @@
                                                                  (nested-list (desc-item
                                                                                (desc-key
                                                                                 "k")
+
                                                                                
                                                                                (line-content
                                                                                 "v")))))
@@ -233,16 +245,108 @@
                                                                  (nested-list (unordered-item
                                                                                (line-content
                                                                                 "b")
+
                                                                                
                                                                                (nested-list
                                                                                 (ordered-item
                                                                                  (line-content
                                                                                   "c"))))
+
                                                                               
                                                                               (unordered-item
                                                                                (line-content
                                                                                 "d")))))
                              #:got (car (nodes "- a\n  - b\n    1. c\n  - d\n"))))))
+
+;; Link targets are classified in one place so that both renderers agree on
+;; what a target means.  These tests pin that classification down.
+(define link-targets-suite
+  (suite "Org link targets"
+         (test "a scheme link keeps its scheme"
+               (assert-equal #:expect 'https
+                             #:got (org-link-protocol "https://example.org/a"))
+               (assert-equal #:expect "//example.org/a"
+                             #:got (org-link-path "https://example.org/a"))
+               (assert-equal #:expect "https://example.org/a"
+                             #:got (org-link-href "https://example.org/a")))
+         (test "mailto and tel links keep their scheme"
+               (assert-equal #:expect 'mailto
+                             #:got (org-link-protocol "mailto:me@example.org"))
+               (assert-equal #:expect "mailto:me@example.org"
+                             #:got (org-link-href "mailto:me@example.org"))
+               (assert-equal #:expect 'tel
+                             #:got (org-link-protocol "tel:+1234")))
+         (test "file links and bare paths are local files"
+               (assert-equal #:expect 'file
+                             #:got (org-link-protocol "file:notes.org"))
+               (assert-equal #:expect "notes.org"
+                             #:got (org-link-path "file:notes.org"))
+               (assert-equal #:expect "notes.org"
+                             #:got (org-link-href "file:notes.org"))
+               (assert-equal #:expect 'file
+                             #:got (org-link-protocol "notes.org"))
+               (assert-equal #:expect "images/a.png"
+                             #:got (org-link-path "file://images/a.png")))
+         (test "a ::search suffix is kept apart from the path"
+               (assert-equal #:expect "notes.org"
+                             #:got (org-link-path "notes.org::*Intro"))
+               (assert-equal #:expect "*Intro"
+                             #:got (org-link-search "notes.org::*Intro"))
+               (assert-equal #:expect "notes.org"
+                             #:got (org-link-href "notes.org::*Intro"))
+               (assert-equal #:expect #f
+                             #:got (org-link-search "notes.org")))
+         (test "custom ids and heading links become fragments"
+               (assert-equal #:expect 'internal
+                             #:got (org-link-protocol "#custom-id"))
+               (assert-equal #:expect "#custom-id"
+                             #:got (org-link-href "#custom-id"))
+               (assert-equal #:expect "custom-id"
+                             #:got (org-link-display "#custom-id"))
+               (assert-equal #:expect 'heading
+                             #:got (org-link-protocol "*My Section"))
+               (assert-equal #:expect "#my-section"
+                             #:got (org-link-href "*My Section"))
+               (assert-equal #:expect "My Section"
+                             #:got (org-link-display "*My Section")))
+         (test "a Windows drive letter is not a scheme"
+               (assert-equal #:expect 'file
+                             #:got (org-link-protocol "C:/tmp/x.txt"))
+               (assert-equal #:expect "C:/tmp/x.txt"
+                             #:got (org-link-href "C:/tmp/x.txt")))
+         (test "image links are recognised by extension"
+               (assert-equal #:expect #t
+                             #:got (org-image-link? "file:photo.png"))
+               (assert-equal #:expect #t
+                             #:got (org-image-link? "images/diagram.SVG"))
+               (assert-equal #:expect #t
+                             #:got (org-image-link? "photo.jpeg?raw=1"))
+               (assert-equal #:expect #t
+                             #:got (org-image-link?
+                                    "data:image/gif;base64,AAAA"))
+               (assert-equal #:expect #f
+                             #:got (org-image-link? "file:notes.org"))
+               (assert-equal #:expect #f
+                             #:got (org-image-link?
+                                    "https://example.org/x.png")))))
+
+;; Headings carry their anchor as an id, and `*Heading' links point at the very
+;; same anchor, so the two can never drift apart.
+(define heading-anchors-suite
+  (suite "Heading anchors"
+         (test "titles become URL fragments"
+               (assert-equal #:expect "my-first-section"
+                             #:got (org-anchor "My First Section"))
+               (assert-equal #:expect "spaced-punct"
+                             #:got (org-anchor "  Spaced & Punct!!  "))
+               (assert-equal #:expect "a-b"
+                             #:got (org-anchor "a -- b"))
+               (assert-equal #:expect ""
+                             #:got (org-anchor "***")))
+         (test "a heading link uses the anchor of its title"
+               (assert-equal #:expect (string-append "#"
+                                                     (org-anchor "My Section"))
+                             #:got (org-link-href "*My Section")))))
 
 (define (spec)
   (veritas-run document-elements-suite
@@ -250,4 +354,6 @@
                inline-tokens-suite
                inline-constructs-suite
                mixed-list-suite
+               link-targets-suite
+               heading-anchors-suite
                whole-document-suite))

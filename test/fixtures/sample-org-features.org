@@ -11,6 +11,13 @@ and then the continuation.
 See [[https://gnu.org][GNU]] or a raw link https://example.org plus a
 footnote reference[fn:one] and an inline footnote[fn::like this].
 
+* Links and images
+An external [[https://example.org/docs][documentation link]], a bare [[notes.org]],
+an [[file:photo.png][inline image]], a bare [[images/diagram.svg]] and a jump
+[[file:notes.org::*Introduction][into another file]].
+A local anchor [[#custom-id][custom id]] and a heading link [[*Introduction][up top]].
+Mail [[mailto:hello@example.org][the author]] or dial [[tel:+123456]].
+
 [fn:one] The footnote definition.
 
 * TODO [#A] A Task :work:urgent:

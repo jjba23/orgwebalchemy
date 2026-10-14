@@ -31,6 +31,8 @@
                              org-ast->html
                              sxml->html-string
                              link-classes
+                             image-classes
+                             heading-id
                              code-classes
                              make-sxml-attrs
                              code-block-classes
@@ -82,6 +84,16 @@
       ((not (null? extra-attrs))
        `((@ ,@extra-attrs)))
       (else '()))))
+
+(define (heading-id text)
+  "Return the `id' attributes for a heading whose title is @var{text}.
+The id is exactly the anchor an Org `*Heading' link points at, so a heading and
+the links to it agree by construction.  A title with nothing anchor-worthy in
+it (an empty one, or one made only of punctuation) gets no id at all."
+  (let ((id (org-anchor (or text ""))))
+    (if (string-null? id)
+        '()
+        `((id ,id)))))
 
 (define (sxml->html-string sxml)
   "Render an SXML tree or list of SXML nodes to an HTML string,
@@ -231,18 +243,30 @@ is not a checkbox item."
        `(sup ,@(make-sxml-attrs '("footnote-inline"))
              ,definition))
 
-      ;; [[URL][description]]
+      ;; [[target][description]] -- an image link becomes an `img' whose alt is
+      ;; the description, every other link an `a' whose href comes from the
+      ;; shared link classifier (so `file:' links, `#custom-id' links and
+      ;; `*Heading' links all point somewhere real).
       (('inline-link-with-desc ('link-target-content url)
         ('link-description-content description))
-       `(a ,@(make-sxml-attrs (link-classes)
-                              `((href ,url)))
-           ,@(inline-org->sxml (inline-org->ast description))))
+       (if (org-image-link? url)
+           `(img ,@(make-sxml-attrs (image-classes)
+                                    `((src ,(org-link-href url))
+                                      (alt ,description))))
+           `(a ,@(make-sxml-attrs (link-classes)
+                                  `((href ,(org-link-href url))))
+               ,@(inline-org->sxml (inline-org->ast description)))))
 
-      ;; [[URL]]
+      ;; [[target]] -- the link text is what Org would show: the path, the id,
+      ;; or the full URL.
       (('inline-link-no-desc ('link-target-content url))
-       `(a ,@(make-sxml-attrs (link-classes)
-                              `((href ,url)))
-           ,url))
+       (if (org-image-link? url)
+           `(img ,@(make-sxml-attrs (image-classes)
+                                    `((src ,(org-link-href url))
+                                      (alt ,(org-link-display url)))))
+           `(a ,@(make-sxml-attrs (link-classes)
+                                  `((href ,(org-link-href url))))
+               ,(org-link-display url))))
 
       ;; URL
       (('inline-raw-url ('url-scheme scheme) url)
@@ -412,11 +436,13 @@ kind into list elements of their own."
                                                                                    (c)
                                                                              (match c
                                                                                
+                                                                               
                                                                                (
                                                                                 ('heading-tags
                                                                                  xs
                                                                                  ...)
                                                                                 xs)
+
                                                                                
                                                                                (_ '())))
                                                                 children))
@@ -440,7 +466,8 @@ kind into list elements of their own."
                                                                               todo)))
                                                                            '()))))
                                                     `(,tag ,@(make-sxml-attrs
-                                                              classes)
+                                                              classes
+                                                              (heading-id text))
                                                       ,@(if todo
                                                             (list `(span ,@(make-sxml-attrs '
                                                                             ("org-todo"))
@@ -631,6 +658,9 @@ kind into list elements of their own."
 ;; =============================================
 
 (define link-classes
+  (make-parameter '()))
+
+(define image-classes
   (make-parameter '()))
 
 (define code-classes

@@ -127,12 +127,14 @@
 (define block-org-suite
   (suite "Block Org AST & Document Parsing"
          (test "headings AST transformation"
+               ;; A heading carries the anchor id that `*Heading' links point
+               ;; at, so the id is derived from the title itself.
                (assert-equal #:got (org->html "* Level 1")
-                             #:expect "<h1>Level 1</h1>")
+                             #:expect "<h1 id=\"level-1\">Level 1</h1>")
                (assert-equal #:got (org->html "** Level 2")
-                             #:expect "<h2>Level 2</h2>")
+                             #:expect "<h2 id=\"level-2\">Level 2</h2>")
                (assert-equal #:got (org->html "*** Level 3")
-                             #:expect "<h3>Level 3</h3>"))
+                             #:expect "<h3 id=\"level-3\">Level 3</h3>"))
          (test "paragraph transformation"
                (assert-equal #:got (org->html
                                     "A simple paragraph with *bold* text.")
@@ -170,45 +172,83 @@
                (assert-no-error (lambda ()
                                   (org->html sample-org-table))))))
 
+;; `veritas' collects the assertions of a test by filtering the test body for
+;; procedures, so several assertions inside one `parameterize' collapse into a
+;; single case and the earlier ones are never run.  These helpers parameterize
+;; the renderers instead, so every assertion can sit at the top level of its
+;; test.  The rendering happens while the assertion's arguments are evaluated,
+;; which is inside the dynamic extent of the `parameterize'.
+(define (with-heading-demo-classes thunk)
+  (parameterize ((heading-classes (lambda (lvl)
+                                    (case lvl
+                                      ((1)
+                                       '("text-3xl" "font-bold"))
+                                      ((2)
+                                       '("text-xl"))
+                                      (else '("text-base"))))))
+    (thunk)))
+
+(define (with-inline-demo-classes thunk)
+  (parameterize ((bold-classes '("font-bold" "text-red-500"))
+                 (italic-classes '("italic"))
+                 (link-classes '("underline" "text-blue-600")))
+    (thunk)))
+
+(define (with-block-demo-classes thunk)
+  (parameterize ((paragraph-classes '("leading-relaxed" "mb-4"))
+                 (code-block-classes '("bg-gray-900" "p-4"))
+                 (unordered-list-classes '("list-disc" "ml-6")))
+    (thunk)))
+
+(define (with-demo-image-classes thunk)
+  (parameterize ((image-classes '("rounded")))
+    (thunk)))
+
 (define parameterized-classes-suite
   (suite "Class Parameter Customization"
          (test "customizing heading classes dynamically"
-               (parameterize ((heading-classes (lambda (lvl)
-                                                 (case lvl
-                                                   ((1)
-                                                    '("text-3xl" "font-bold"))
-                                                   ((2)
-                                                    '("text-xl"))
-                                                   (else '("text-base"))))))
-                 (assert-equal #:got (org->html "* Main Title")
-                  #:expect "<h1 class=\"text-3xl font-bold\">Main Title</h1>")
-                 (assert-equal #:got (org->html "** Section")
-                               #:expect "<h2 class=\"text-xl\">Section</h2>")))
+               (with-heading-demo-classes (lambda ()
+                                            (assert-equal #:got (org->html
+                                                                 "* Main Title")
+                                             #:expect
+                                             "<h1 class=\"text-3xl font-bold\" id=\"main-title\">Main Title</h1>")))
+               (with-heading-demo-classes (lambda ()
+                                            (assert-equal #:got (org->html
+                                                                 "** Section")
+                                             #:expect
+                                             "<h2 class=\"text-xl\" id=\"section\">Section</h2>"))))
          (test "customizing inline markup classes"
-               (parameterize ((bold-classes '("font-bold" "text-red-500"))
-                              (italic-classes '("italic"))
-                              (link-classes '("underline" "text-blue-600")))
-                 (assert-equal #:got (inline-org->html (inline-org->ast
-                                                        "*styled bold*"))
-                  #:expect
-                  "<strong class=\"font-bold text-red-500\">styled bold</strong>")
-                 (assert-equal #:got (inline-org->html (inline-org->ast
-                                                        "[[/path][link]]"))
-                  #:expect
-                  "<a class=\"underline text-blue-600\" href=\"/path\">link</a>")))
+               (with-inline-demo-classes (lambda ()
+                                           (assert-equal #:got (inline-org->html
+                                                                (inline-org->ast
+                                                                 "*styled bold*"))
+                                            #:expect
+                                            "<strong class=\"font-bold text-red-500\">styled bold</strong>")))
+               (with-inline-demo-classes (lambda ()
+                                           (assert-equal #:got (inline-org->html
+                                                                (inline-org->ast
+                                                                 "[[/path][link]]"))
+                                            #:expect
+                                            "<a class=\"underline text-blue-600\" href=\"/path\">link</a>"))))
          (test "customizing block element classes"
-               (parameterize ((paragraph-classes '("leading-relaxed" "mb-4"))
-                              (code-block-classes '("bg-gray-900" "p-4"))
-                              (unordered-list-classes '("list-disc" "ml-6")))
-                 (assert-equal #:got (org->html "Paragraph text.")
-                  #:expect
-                  "<p class=\"leading-relaxed mb-4\">Paragraph text.</p>")
-                 (assert-equal #:got (org->html
-                                                "#+BEGIN_SRC python\nprint(1)\n#+END_SRC")
-                  #:expect
-                  "<pre class=\"python bg-gray-900 p-4\">print(1)</pre>")
-                 (assert-equal #:got (org->html "- item")
-                  #:expect "<ul class=\"list-disc ml-6\"><li>item</li></ul>")))))
+               (with-block-demo-classes (lambda ()
+                                          (assert-equal #:got (org->html
+                                                               "Paragraph text.")
+                                           #:expect
+                                           "<p class=\"leading-relaxed mb-4\">Paragraph text.</p>")))
+               ;; The block keeps the newline that ends its last source line,
+               ;; the same way Org's own HTML export does.
+               (with-block-demo-classes (lambda ()
+                                          (assert-equal #:got (org->html
+                                                               "#+BEGIN_SRC python\nprint(1)\n#+END_SRC")
+                                           #:expect
+                                           "<pre class=\"python bg-gray-900 p-4\">print(1)
+</pre>")))
+               (with-block-demo-classes (lambda ()
+                                          (assert-equal #:got (org->html
+                                                               "- item")
+                                           #:expect
+                                           "<ul class=\"list-disc ml-6\"><li>item</li></ul>"))))))
 
 (define sxml-rendering-suite
   (suite "SXML to HTML String Rendering"
@@ -474,10 +514,10 @@
                (assert-equal #:got (org->html
                                     "* TODO [#A] A Task :work:urgent:\n")
                 #:expect
-                "<h1 class=\"org-todo org-todo-todo\"><span class=\"org-todo\">TODO</span><span class=\"org-priority\">[#A]</span>A Task<span class=\"org-tags\"><span class=\"org-tag\">work</span><span class=\"org-tag\">urgent</span></span></h1>"))
-         (test "plain headings are unchanged"
+                "<h1 class=\"org-todo org-todo-todo\" id=\"a-task\"><span class=\"org-todo\">TODO</span><span class=\"org-priority\">[#A]</span>A Task<span class=\"org-tags\"><span class=\"org-tag\">work</span><span class=\"org-tag\">urgent</span></span></h1>"))
+         (test "plain headings carry an anchor id"
                (assert-equal #:got (org->html "* Plain\n")
-                             #:expect "<h1>Plain</h1>"))))
+                             #:expect "<h1 id=\"plain\">Plain</h1>"))))
 
 (define mixed-list-suite
   (suite "Mixed and nested list types"
@@ -509,6 +549,44 @@
                (assert-matches #:pattern "<th> Name </th>"
                                #:got (org->html sample-org-features)))))
 
+;; Links are classified once, in the parser, and every renderer follows that
+;; one answer: an image link becomes an `img', a `file:' link loses its prefix,
+;; and `#custom-id' and `*Heading' links point at a real fragment.
+(define links-and-images-suite
+  (suite "Links and images"
+         (test "an image link renders as an img"
+               (assert-equal #:got (org->html "[[file:photo.png][a photo]]")
+                             #:expect
+                             "<p><img src=\"photo.png\" alt=\"a photo\" /></p>")
+               (assert-equal #:got (org->html "[[images/diagram.svg]]")
+                #:expect
+                "<p><img src=\"images/diagram.svg\" alt=\"images/diagram.svg\" /></p>"))
+         (test "file links lose their file: prefix"
+               (assert-equal #:got (org->html "[[file:notes.org][notes]]")
+                             #:expect "<p><a href=\"notes.org\">notes</a></p>")
+               (assert-equal #:got (org->html "[[notes.org]]")
+                             #:expect
+                             "<p><a href=\"notes.org\">notes.org</a></p>"))
+         (test "a heading link points at the heading anchor"
+               (assert-equal #:got (org->html
+                                              "* Notes\nSee [[*Notes][there]].\n")
+                #:expect
+                "<h1 id=\"notes\">Notes</h1><p>See <a href=\"#notes\">there</a>.</p>"))
+         (test "a custom id link stays a fragment"
+               (assert-equal #:got (org->html "[[#custom-id][there]]")
+                             #:expect
+                             "<p><a href=\"#custom-id\">there</a></p>"))
+         (test "a ::search suffix is not part of the href"
+               (assert-equal #:got (org->html
+                                    "[[file:notes.org::*Notes][notes]]")
+                             #:expect "<p><a href=\"notes.org\">notes</a></p>"))
+         (test "image classes can be customised"
+               (with-demo-image-classes (lambda ()
+                                          (assert-equal #:got (org->html
+                                                               "[[file:photo.png]]")
+                                           #:expect
+                                           "<p><img class=\"rounded\" src=\"photo.png\" alt=\"photo.png\" /></p>"))))))
+
 (define (spec)
   (veritas-run make-sxml-attrs-suite
                inline-org-suite
@@ -523,4 +601,5 @@
                extended-inline-suite
                extended-block-suite
                heading-metadata-suite
+               links-and-images-suite
                feature-fixture-suite))

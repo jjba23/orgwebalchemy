@@ -21,7 +21,15 @@
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
   #:use-module (srfi srfi-1)
-  #:export (org->ast inline-org->ast))
+  #:export (org->ast inline-org->ast
+                     org-link-parts
+                     org-link-protocol
+                     org-link-path
+                     org-link-search
+                     org-link-href
+                     org-link-display
+                     org-image-link?
+                     org-anchor))
 
 ;; =====================================================================
 ;; Macros for PEG Pattern Generation
@@ -66,6 +74,12 @@
 
 (define-peg-pattern nl none
                     (or "\r\n" "\n"))
+;; A single-character newline test.  Scanning text with `(not-followed-by nl)'
+;; costs a two-character and a one-character comparison at every position, and
+;; then an `eof' check; `nl-char' halves that and is what `line-content' and
+;; `inline-text' use to know where to stop.
+(define-peg-pattern nl-char none
+                    (or "\r" "\n"))
 (define-peg-pattern ws none
                     (or " " "\t"))
 (define-peg-pattern eof none
@@ -121,8 +135,13 @@
 
 (define-peg-pattern table-sep none "|")
 (define-peg-pattern table-column-sep none "+")
+;; `table-sep' is `|' (124), so the fast range stops short of it and resumes
+;; after it; the checked branch handles that one character, the line ends and
+;; anything outside printable ASCII.
 (define-peg-pattern table-cell all
-                    (* (and (not-followed-by (or table-sep eol)) peg-any)))
+                    (* (or (range #\space #\{)
+                           (range #\} #\~) "\t"
+                           (and (not-followed-by (or table-sep eol)) peg-any))))
 
 (define-peg-pattern table-row-end none
                     (or (and table-sep
@@ -336,8 +355,14 @@
 (define-peg-pattern paragraph all
                     (and (not-followed-by special-starts) line-content eol))
 
+;; Ordinary printable ASCII cannot be a newline, so a run of it is consumed by
+;; a single range test per character.  Everything else (non-ASCII text, control
+;; characters, the newline itself) falls through to the checked branch, which
+;; is what actually decides where the line ends.  `#\~' is 126 and both
+;; newline characters are below 32, so the range can never swallow one.
 (define-peg-pattern line-content all
-                    (* (and (not-followed-by eol) peg-any)))
+                    (* (or (range #\space #\~) "\t"
+                           (and (not-followed-by nl-char) peg-any))))
 
 ;; =====================================================================
 ;; Inline Org Markup
@@ -433,47 +458,93 @@
 (define-peg-pattern inline-link-no-desc all
                     (and link-open link-target-content link-close))
 
+;; The schemes are grouped by their first character so that a position that
+;; cannot begin a scheme fails after a couple of one-character comparisons
+;; instead of fifteen whole-string ones.
 (define-peg-pattern url-scheme all
-                    (or "http://"
-                        "https://"
-                        "ftp://"
-                        "ftps://"
-                        "file://"
-                        "ssh://"
-                        "sftp://"
-                        "ws://"
-                        "wss://"
-                        "git://"
-                        "gopher://"
+                    (or (and "h"
+                             (or "ttps://" "ttp://"))
+                        (and "f"
+                             (or "tps://" "tp://" "ile://"))
+                        (and "s"
+                             (or "sh://" "ftp://"))
+                        (and "w"
+                             (or "ss://" "s://"))
+                        (and "g"
+                             (or "opher://" "it://"))
                         "tel:"
                         "mailto:"
-                        "irc://"
-                        "ircs://"))
+                        (and "i"
+                             (or "rcs://" "rc://"))))
 
 (define-peg-pattern inline-raw-url all
                     (and url-scheme
                          (+ (and (not-followed-by (or ws nl)) peg-any))))
 
+;; Ordered so the single-character markers are tried first and the multi-
+;; character constructs (footnotes, links) and the scheme scan come last:
+;; markup-heavy text then finds its markers without walking the whole list.
 (define-peg-pattern inline-special body
-                    (or inline-line-break
+                    (or inline-bold
+                        inline-italic
+                        inline-code
+                        inline-verbatim
+                        inline-underline
+                        inline-strike
+                        inline-superscript
+                        inline-subscript
+                        inline-line-break
                         inline-escape
                         inline-footnote-inline
                         inline-footnote-def
                         inline-footnote-ref
                         inline-link-with-desc
                         inline-link-no-desc
-                        inline-raw-url
-                        inline-code
-                        inline-verbatim
-                        inline-italic
-                        inline-bold
-                        inline-underline
-                        inline-strike
-                        inline-superscript
-                        inline-subscript))
+                        inline-raw-url))
+
+;; Fast path for ordinary inline text.  `inline-special' can only start with
+;; one of the markup characters (`* / ~ = + ^ _ \\ [') or with a letter that
+;; can begin a URL scheme (h f s w g t m i r).  Every other character is known
+;; to be plain, so a whole run of them costs a few range tests instead of one
+;; `not-followed-by' check against the entire inline grammar per character.
+;; The scheme-initial letters are deliberately left out of the fast path, so a
+;; URL glued to the end of a word is still recognised.
+(define-peg-pattern inline-plain-char body
+                    (or (range #\a #\e)
+                        (range #\j #\l)
+                        (range #\n #\q)
+                        (range #\u #\v)
+                        (range #\x #\z)
+                        (range #\A #\Z)
+                        (range #\0 #\9)
+                        " "
+                        "\t"
+                        "."
+                        ","
+                        ";"
+                        ":"
+                        "?"
+                        "!"
+                        "("
+                        ")"
+                        "-"
+                        "'"
+                        "\""
+                        "%"
+                        "&"
+                        "@"
+                        "#"
+                        "{"
+                        "}"
+                        "<"
+                        ">"
+                        "|"
+                        "$"))
 
 (define-peg-pattern inline-text all
-                    (+ (and (not-followed-by (or inline-special eol)) peg-any)))
+                    (+ (or inline-plain-char
+                           (and (not-followed-by (or inline-special nl-char))
+                                peg-any))))
 
 (define-peg-pattern inline-element body
                     (or inline-special inline-text))
@@ -619,9 +690,11 @@ and tags so renderers need not know about Org's heading syntax."
                                    ,@(if (null? tags)
                                          '()
                                          (list (cons 'heading-tags tags)))))))
-    ((node-type . children) (if (list? children)
-                                (cons node-type
-                                      (map process-ast children)) ast))
+    ((node-type . children)
+     ;; `children' is always a proper list here, so the old `(list? children)'
+     ;; only walked it to no effect; `map' is what actually matters.
+     (cons node-type
+           (map process-ast children)))
     (other other)))
 
 (define (get-indent item)
@@ -670,6 +743,213 @@ tree and any remaining unparsed items."
                                                      (cdr acc))))))))
             (else (loop (cdr items)
                         (cons (strip-indent (car items)) acc))))))))
+
+;; =====================================================================
+;; Link Targets
+;; =====================================================================
+;;
+;; An Org link is `[[target][description]]' (or `[[target]]'), and the target
+;; says what kind of link it is: an external URL, a file (possibly an image), a
+;; `#custom-id', a `*Heading' in the same document, or a plain path.  All of
+;; that is decided here, once, so the HTML and Markdown renderers only have to
+;; ask what they need instead of each re-reading the target themselves.
+
+;; The extensions Org renders as an image when they appear in a `file:' link or
+;; in a bare path.  Lower-case, without the leading dot.
+(define org-image-extensions
+  '("png" "jpg"
+    "jpeg"
+    "gif"
+    "svg"
+    "webp"
+    "avif"
+    "bmp"
+    "tiff"
+    "tif"
+    "ico"))
+
+(define (file-name path)
+  "Return the last path component of @var{path}."
+  (let ((slash (string-rindex path #\/)))
+    (if slash
+        (substring path
+                   (+ slash 1)
+                   (string-length path)) path)))
+
+(define (file-extension path)
+  "Return the lower-case extension of @var{path} without its dot, or @code{#f}.
+A query string is ignored, so @code{photo.png?raw=1} is still a PNG."
+  (let* ((name (file-name (car (string-split path #\?))))
+         (dot (string-rindex name #\.)))
+    (and dot
+         (< 0 dot
+            (- (string-length name) 1))
+         (string-downcase (substring name
+                                     (+ dot 1)
+                                     (string-length name))))))
+
+(define (url-scheme? str)
+  "Return @code{#t} when @var{str} looks like a URL scheme such as `https'.
+A scheme is a lower-case letter followed by lower-case letters, digits, `+',
+`-' or `.'; insisting on lower case is what keeps the Windows path `C:/tmp'
+from being read as a scheme called `c'."
+  (let ((n (string-length str)))
+    (and (> n 0)
+         (char<=? #\a
+                  (string-ref str 0) #\z)
+         (every (lambda (c)
+                  (or (char<=? #\a c #\z)
+                      (char-numeric? c)
+                      (memv c
+                            '(#\+ #\- #\.))))
+                (string->list (substring str 1 n))))))
+
+(define (link-search-split target)
+  "Split @var{target} at the first `::', giving @code{(path . search)}.
+The search part is @code{#f} when the target has none; it is what Org uses for
+`file:notes.org::*Heading' and `file:notes.org::#anchor'."
+  (let ((at (string-contains target "::")))
+    (if at
+        (cons (substring target 0 at)
+              (substring target
+                         (+ at 2)
+                         (string-length target)))
+        (cons target #f))))
+
+(define (org-link-parts target)
+  "Split the Org link @var{target} into @code{(protocol . path)}.
+@var{protocol} is a symbol:
+
+@itemize
+@item
+@code{http}, @code{https}, @code{mailto}, @code{data} and friends, for a link
+that carries a URL scheme of its own;
+@item
+@code{file} for a @code{file:} link and for a bare path such as @code{notes.org};
+@item
+@code{internal} for a @code{#custom-id} link;
+@item
+@code{heading} for a @code{*Heading} link.
+@end itemize
+
+@var{path} is @var{target} with its prefix removed and with any `::search'
+suffix dropped, so it is ready to be used as an href or a file name.
+@code{org-link-search} returns that suffix separately."
+  (let ((path (car (link-search-split target))))
+    (cond
+      ((string-prefix? "#" path)
+       (cons 'internal
+             (substring path 1
+                        (string-length path))))
+      ((string-prefix? "*" path)
+       (cons 'heading
+             (substring path 1
+                        (string-length path))))
+      ((string-prefix? "file://" path)
+       (cons 'file
+             (substring path 7
+                        (string-length path))))
+      ((string-prefix? "file:" path)
+       (cons 'file
+             (substring path 5
+                        (string-length path))))
+      (else (let ((colon (string-index path #\:)))
+              (if (and colon
+                       (> colon 0)
+                       (url-scheme? (substring path 0 colon)))
+                  (cons (string->symbol (string-downcase (substring path 0
+                                                                    colon)))
+                        (substring path
+                                   (+ colon 1)
+                                   (string-length path)))
+                  (cons 'file path)))))))
+
+(define (org-link-protocol target)
+  "Return the protocol symbol of the Org link @var{target}.
+See @code{org-link-parts} for the possible values."
+  (car (org-link-parts target)))
+
+(define (org-link-path target)
+  "Return the path of the Org link @var{target}, without protocol or search part."
+  (cdr (org-link-parts target)))
+
+(define (org-link-search target)
+  "Return the `::search' part of the Org link @var{target}, or @code{#f}.
+This is the @code{*Heading'} or @code{#anchor} that a file link points inside
+the linked document; it is not something the renderers act on yet."
+  (cdr (link-search-split target)))
+
+(define (org-image-link? target)
+  "Return @code{#t} when the Org link @var{target} should render as an image.
+A `file:' link (or a bare path) whose extension is one of
+@code{org-image-extensions} counts, as does a @code{data:image/...} URI."
+  (let ((protocol (org-link-protocol target))
+        (path (org-link-path target)))
+    (cond
+      ((eq? protocol
+            'file)
+       (let ((extension (file-extension path)))
+         (and extension
+              (member extension org-image-extensions) #t)))
+      ((eq? protocol
+            'data)
+       (string-prefix? "image/" path))
+      (else #f))))
+
+(define (org-link-href target)
+  "Return the href an Org link @var{target} should point at.
+File links give their path, `#custom-id' and `*Heading' links give a local
+fragment, and a link with a scheme of its own keeps it."
+  (let ((protocol (org-link-protocol target))
+        (path (org-link-path target)))
+    (cond
+      ((eq? protocol
+            'internal)
+       (string-append "#" path))
+      ((eq? protocol
+            'heading)
+       (string-append "#"
+                      (org-anchor path)))
+      ((eq? protocol
+            'file)
+       path)
+      (else (format #f "~a:~a" protocol path)))))
+
+(define (org-link-display target)
+  "Return the text Org shows for a link @var{target} that has no description.
+An internal or heading link shows its id or title, a file link its path, and a
+link with a scheme of its own the full URL."
+  (let ((protocol (org-link-protocol target)))
+    (if (or (eq? protocol
+                 'internal)
+            (eq? protocol
+                 'heading))
+        (org-link-path target)
+        (org-link-href target))))
+
+(define (org-anchor text)
+  "Return a URL-fragment-safe anchor for @var{text}.
+Lower-case letters and digits survive, every run of anything else becomes a
+single dash, and leading or trailing dashes are dropped: `My First Section'
+becomes @code{my-first-section}.  Headings carry this as their @code{id} and
+`*Heading' links point at it, so the two agree by construction."
+  (let loop
+    ((chars (string->list (string-downcase text)))
+     (out '())
+     (dash? #t))
+    (if (null? chars)
+        (list->string (reverse (if (and (pair? out)
+                                        (char=? (car out) #\-))
+                                   (cdr out) out)))
+        (let ((c (car chars)))
+          (cond
+            ((or (char-alphabetic? c)
+                 (char-numeric? c))
+             (loop (cdr chars)
+                   (cons c out) #f))
+            (dash? (loop (cdr chars) out #t))
+            (else (loop (cdr chars)
+                        (cons #\- out) #t)))))))
 
 ;; =====================================================================
 ;; Parser Entry Point
