@@ -196,6 +196,61 @@
                (assert-equal #:expect "[there](#custom-id)\n\n"
                              #:got (org->markdown "[[#custom-id][there]]")))))
 
+;; Markdown has no figure element, so a figure becomes its image, its caption
+;; as an emphasised line, and -- when it has a name -- the anchor a
+;; `[[fig:arch]]' link resolves against.
+(define figures-markdown-suite
+  (suite "Figures in Markdown"
+         (test "a named figure keeps an anchor for its cross-references"
+               (assert-equal #:expect "<a id=\"fig:arch\"></a>
+
+![a diagram](diagram.png)
+
+*The architecture*
+
+"
+                             #:got (org->markdown
+                                    "#+NAME: fig:arch
+#+CAPTION: The architecture
+[[file:diagram.png][a diagram]]
+")))
+         (test "a caption names an image with no alt text of its own"
+               (assert-equal #:expect "![A caption](a.png)\n\n*A caption*\n\n"
+                             #:got (org->markdown
+                                                  "#+CAPTION: A caption\n[[file:a.png]]\n")))
+         (test "a link to a figure points at its anchor"
+               (assert-contains #:expect (org->markdown "#+NAME: fig:arch
+[[file:a.png]]
+
+See [[fig:arch]].
+")
+                                #:got "[fig:arch](#fig:arch)"))
+         (test "a figure without a caption is just the image"
+               (assert-equal #:expect
+                             "<a id=\"fig:x\"></a>\n\n![x.svg](x.svg)\n\n"
+                             #:got (org->markdown
+                                                  "#+NAME: fig:x\n[[file:x.svg]]\n")))))
+
+;; Markdown has no id on a table, a block or a paragraph, so a named element
+;; gets an explicit anchor to be the thing a cross-reference resolves against.
+(define named-elements-markdown-suite
+  (suite "Named elements in Markdown"
+         (test "a named table keeps an anchor for its cross-references"
+               (assert-equal #:expect
+                             "<a id=\"tbl:data\"></a>\n\n| a |\n| --- |\n\n"
+                             #:got (org->markdown "#+NAME: tbl:data\n| a |\n")))
+         (test "a bare link to a name points at the anchor"
+               (assert-contains #:expect (org->markdown "#+NAME: tbl:data
+| a |
+
+See [[tbl:data]].
+")
+                                #:got "[tbl:data](#tbl:data)"))
+         (test "a named quote block keeps its anchor too"
+               (assert-equal #:expect "<a id=\"q\"></a>\n\n> x\n\n"
+                             #:got (org->markdown
+                                                  "#+NAME: q\n#+BEGIN_QUOTE\nx\n#+END_QUOTE\n")))))
+
 (define (spec)
   (veritas-run inline-markdown-suite
                block-markdown-suite
@@ -203,4 +258,6 @@
                mixed-list-suite
                fixtures->markdown-suite
                links-and-images-markdown-suite
+               figures-markdown-suite
+               named-elements-markdown-suite
                document-markdown-suite))

@@ -437,6 +437,35 @@ whenever the item kind changes."
     (('paragraph ('line-content text))
      (string-append (inline-org->markdown (inline-org->ast text)) "\n\n"))
 
+    ;; Figure: the image with the caption and name the keywords above it gave
+    ;; it.  Markdown has no figure element, so the name becomes an explicit
+    ;; anchor -- the one thing a `[[fig:arch]]' link needs to resolve -- and the
+    ;; caption an emphasised line under the image.
+    (('figure _ ...)
+     (let* ((parts (figure-parts node))
+            (name (list-ref parts 0))
+            (caption (list-ref parts 1))
+            (target (list-ref parts 2))
+            (description (list-ref parts 3)))
+       (string-append (if name
+                          (format #f "<a id=\"~a\"></a>\n\n" name) "")
+                      (format #f "![~a](~a)\n\n"
+                              (or description caption
+                                  (org-link-display target))
+                              (org-link-href target))
+                      (if caption
+                          (format #f "*~a*\n\n" caption) ""))))
+
+    ;; A named element: Markdown has no id on most of these elements, so the
+    ;; name becomes an explicit anchor -- the thing a `[[tbl:data]]' or
+    ;; `[[name]]' link needs to resolve -- and the element follows it.
+    (('named _ ...)
+     (let* ((parts (named-parts node))
+            (name (list-ref parts 0))
+            (inner (list-ref parts 1)))
+       (string-append (format #f "<a id=\"~a\"></a>\n\n" name)
+                      (or (render-block inner) ""))))
+
     ;; Source block
     (('src-block ('lang l)
       ('src-content content))
@@ -503,9 +532,12 @@ whenever the item kind changes."
     (_ #f)))
 
 (define (org-ast->markdown ast)
-  "Convert a document Org AST @var{ast} into a Markdown string."
-  (string-join (filter-map render-block
-                           (inline-nodes ast)) ""))
+  "Convert a document Org AST @var{ast} into a Markdown string.
+The document's own `#+NAME:' targets are in scope while it renders, so a bare
+`[[name]]' link is parsed as the cross-reference it is."
+  (parameterize ((element-names (document-names ast)))
+    (string-join (filter-map render-block
+                             (inline-nodes ast)) "")))
 
 (define (org->markdown str)
   "Convert an Org-mode string @var{str} into a Markdown string."

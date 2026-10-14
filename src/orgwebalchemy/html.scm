@@ -32,6 +32,8 @@
                              sxml->html-string
                              link-classes
                              image-classes
+                             figure-classes
+                             figure-caption-classes
                              heading-id
                              code-classes
                              make-sxml-attrs
@@ -84,6 +86,21 @@
       ((not (null? extra-attrs))
        `((@ ,@extra-attrs)))
       (else '()))))
+
+(define (add-sxml-id node id)
+  "Return the SXML @var{node} with the attribute @var{id} added to it."
+  (let ((tag (car node))
+        (rest (cdr node)))
+    (if (and (pair? rest)
+             (pair? (car rest))
+             (eq? (car (car rest))
+                  '@))
+        `(,tag (@ (id ,id)
+                  ,@(cdr (car rest)))
+          ,@(cdr rest))
+        `(,tag ,@(make-sxml-attrs '()
+                                  (list (list 'id id)))
+          ,@rest))))
 
 (define (heading-id text)
   "Return the `id' attributes for a heading whose title is @var{text}.
@@ -513,6 +530,59 @@ kind into list elements of their own."
        `(p ,@(make-sxml-attrs (paragraph-classes))
            ,@(inline-org->sxml (inline-org->ast text))))
 
+      ;; Figure: an image that the `#+CAPTION:' / `#+NAME:' keywords above it
+      ;; describe.  The name, when there is one, is the element's id, exactly
+      ;; as Org does it, so a `[[fig:arch]]' link -- which the link classifier
+      ;; already turns into the fragment `#fig:arch' -- lands on the figure.
+      (('figure _ ...)
+       (let* ((parts (figure-parts node))
+              (name (list-ref parts 0))
+              (caption (list-ref parts 1))
+              (target (list-ref parts 2))
+              (description (list-ref parts 3)))
+         `(figure ,@(make-sxml-attrs (figure-classes)
+                                     (if name
+                                         `((id ,name))
+                                         '()))
+                  (img ,@(make-sxml-attrs (image-classes)
+                                          `((src ,(org-link-href target))
+                                            (alt ,(or description caption
+                                                      (org-link-display target))))))
+                  ,@(if caption
+                        (list `(figcaption ,@(make-sxml-attrs (figure-caption-classes))
+                                           ,caption))
+                        '()))))
+
+      ;; A named element: `#+NAME:' above an element is its id, exactly as it is
+      ;; for a figure, so a `[[tbl:data]]' link -- which the link classifier
+      ;; already turns into the fragment `#tbl:data' -- lands on the element
+      ;; itself.  Elements that are not their own HTML element, a comment being
+      ;; the one that matters, get an anchor of their own to carry the id.
+      (('named _ ...)
+       (let* ((parts (named-parts node))
+              (name (list-ref parts 0))
+              (inner (list-ref parts 1))
+              (rendered (render inner))
+              (nodes (cond
+                       ((not rendered)
+                        '())
+                       ((and (pair? rendered)
+                             (symbol? (car rendered)))
+                        (list rendered))
+                       ((list? rendered)
+                        rendered)
+                       (else (list rendered)))))
+         (let ((tag (and (pair? nodes)
+                         (pair? (car nodes))
+                         (car (car nodes)))))
+           (if (and tag
+                    (not (eq? tag
+                              'raw-html)))
+               (cons (add-sxml-id (car nodes) name)
+                     (cdr nodes))
+               (cons `(a ,@(make-sxml-attrs '()
+                                            (list (list 'id name)))) nodes)))))
+
       ;; In-buffer keyword / metadata, e.g. #+TITLE: Hello
       (('keyword ('keyword-key key)
         ('keyword-value value))
@@ -619,27 +689,30 @@ kind into list elements of their own."
       ;; fallback when no match found
       (_ #f)))
 
-  (let ((nodes (cond
-                 ((string? ast)
-                  (list ast))
-                 ((and (pair? ast)
-                       (symbol? (car ast)))
-                  (list ast))
-                 (else ast))))
-    ;; A single node may render to several sibling nodes (a mixed list renders
-    ;; to one or more list elements, a description item to a <dt>/<dd> pair),
-    ;; so the results are spliced rather than collected.
-    (append-map (lambda (node)
-                  (let ((res (render node)))
-                    (cond
-                      ((not res)
-                       '())
-                      ((and (pair? res)
-                            (symbol? (car res)))
-                       (list res))
-                      ((list? res)
-                       res)
-                      (else (list res))))) nodes)))
+  ;; The document's own `#+NAME:' targets are in scope while it renders, so a
+  ;; bare `[[name]]' link is parsed as the cross-reference it is.
+  (parameterize ((element-names (document-names ast)))
+    (let ((nodes (cond
+                   ((string? ast)
+                    (list ast))
+                   ((and (pair? ast)
+                         (symbol? (car ast)))
+                    (list ast))
+                   (else ast))))
+      ;; A single node may render to several sibling nodes (a mixed list renders
+      ;; to one or more list elements, a description item to a <dt>/<dd> pair),
+      ;; so the results are spliced rather than collected.
+      (append-map (lambda (node)
+                    (let ((res (render node)))
+                      (cond
+                        ((not res)
+                         '())
+                        ((and (pair? res)
+                              (symbol? (car res)))
+                         (list res))
+                        ((list? res)
+                         res)
+                        (else (list res))))) nodes))))
 
 (define (org-ast->html ast)
   "Convert a document Org AST into an HTML string."
@@ -661,6 +734,12 @@ kind into list elements of their own."
   (make-parameter '()))
 
 (define image-classes
+  (make-parameter '()))
+
+(define figure-classes
+  (make-parameter '()))
+
+(define figure-caption-classes
   (make-parameter '()))
 
 (define code-classes

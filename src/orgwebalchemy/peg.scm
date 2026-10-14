@@ -22,6 +22,10 @@
   #:use-module (ice-9 pretty-print)
   #:use-module (srfi srfi-1)
   #:export (org->ast inline-org->ast
+                     figure-parts
+                     named-parts
+                     document-names
+                     element-names
                      org-link-parts
                      org-link-protocol
                      org-link-path
@@ -35,10 +39,20 @@
 ;; Macros for PEG Pattern Generation
 ;; =====================================================================
 
+;; A block is a begin marker, its content, an end marker and the end of the
+;; line.  The content is everything up to the end marker, it reaches the tree
+;; as one string, and it carries the tag `define-peg-pattern' would have put on
+;; it -- a bare tag when there is no content at all, as an empty `(* ...)' match
+;; produced.
 (define-syntax-rule (define-block-pattern name begin-pat end-pat content-pat)
   (begin
-    (define-peg-pattern content-pat all
-                        (* (and (not-followed-by end-pat) peg-any)))
+    (define (content-pat str len pos)
+      (let ((end (run-end str len pos raw-stop-chars end-pat)))
+        (list end
+              (if (> end pos)
+                  (list 'content-pat
+                        (substring str pos end))
+                  'content-pat))))
     (define-peg-pattern name all
                         (and begin-pat
                              eol
@@ -47,17 +61,21 @@
                              (* ws)
                              eol))))
 
-(define-syntax-rule (define-inline-markup name name-delim name-body
+;; A markup construct is a delimiter, its body and the delimiter again.  The
+;; delimiter has to be a single character, so that the body can be found with
+;; one search; the body is a run scanner, not a character-by-character match.
+(define-syntax-rule (define-inline-markup name name-scan name-delim
                                           name-content delim)
   (begin
     (define-peg-pattern name-delim none delim)
-    (define-peg-pattern name-body body
-                        (or (and (not-followed-by (or delim " " "\t" nl))
-                                 peg-any)
-                            (and (or " " "\t")
-                                 (not-followed-by (or delim nl)))))
-    (define-peg-pattern name-content all
-                        (+ name-body))
+    (define name-scan
+      (let ((delimiter (string-ref delim 0)))
+        (lambda (str len pos)
+          "Consume the body of the markup construct as one string."
+          (char-run+ str len pos
+                     (markup-content-candidates delimiter)
+                     (markup-content-stop? delimiter)))))
+    (define-peg-pattern name-content all name-scan)
     (define-peg-pattern name body
                         (and name-delim
                              (not-followed-by (or " " "\t" nl)) name-content
@@ -74,12 +92,6 @@
 
 (define-peg-pattern nl none
                     (or "\r\n" "\n"))
-;; A single-character newline test.  Scanning text with `(not-followed-by nl)'
-;; costs a two-character and a one-character comparison at every position, and
-;; then an `eof' check; `nl-char' halves that and is what `line-content' and
-;; `inline-text' use to know where to stop.
-(define-peg-pattern nl-char none
-                    (or "\r" "\n"))
 (define-peg-pattern ws none
                     (or " " "\t"))
 (define-peg-pattern eof none
@@ -88,6 +100,283 @@
                     (or nl eof))
 (define-peg-pattern digit none
                     (range #\0 #\9))
+
+;; =====================================================================
+;; Run Scanners
+;; =====================================================================
+;;
+;; `(ice-9 peg)' compiles `(* pattern)' and `(+ pattern)' into a loop that
+;; calls the inner pattern once per repetition and keeps one parse object per
+;; iteration.  Written that way, a scanner hands the tree one fragment per
+;; character, and the fragments then have to be merged back into the string
+;; they spell: a line of `n' characters costs `n' one-character substrings, `n'
+;; list cells, and a merge pass over all of them.
+;;
+;; A compiled pattern is only a procedure of `(string length position)' that
+;; returns `(end . body)', or `#f', so a scanner that consumes a whole run at
+;; once can be written here and named in the grammar like any other pattern.
+;; `string-index' finds the end of a run in a single C-level scan, and the run
+;; then becomes one substring: a fragment per run rather than per character,
+;; and nothing left for the collapse pass to merge.
+;;
+;; Each scanner returns the body the `(* ...)' or `(+ ...)' it replaces would
+;; have produced after collapsing -- a string, or `'()' for an empty match --
+;; and `define-peg-pattern' attaches the same node tag it attached before.
+;; `inline-text-scanner' calls `inline-special', which is defined with the
+;; inline grammar below.
+
+(define nl-chars
+  ;; The characters that end a line of text.
+  (char-set #\newline #\return))
+
+(define table-stop-chars
+  ;; A table cell ends at the cell separator and at the end of the line.
+  (char-set #\| #\newline #\return))
+
+(define inline-stop-chars
+  ;; Every character that can begin an inline construct: the markup markers
+  ;; (`*' bold, `/' italic, `~' code, `=' verbatim, `_' underline and
+  ;; subscript, `+' strike, `^' superscript, `\' escape, `[' footnotes and
+  ;; links), the letters a raw URL scheme can start with (`h f s w g t m i') and
+  ;; the newline.  `r' cannot begin anything; it is here only because the extra
+  ;; `inline-special' check it costs lands on a position that can never begin a
+  ;; construct.  Anything else in a line is known to be plain, and a run of it
+  ;; is taken without a single guess.
+  (char-set #\*
+            #\/
+            #\~
+            #\=
+            #\_
+            #\+
+            #\^
+            #\\
+            #\[
+            #\h
+            #\f
+            #\s
+            #\w
+            #\g
+            #\t
+            #\m
+            #\i
+            #\r
+            #\newline
+            #\return))
+
+(define keyword-key-chars
+  ;; A key ends at whitespace, at the colon that separates it from the value,
+  ;; and at the end of the line.
+  (char-set #\space #\tab #\: #\newline #\return))
+
+(define raw-stop-chars
+  ;; Every end marker a block can have begins with a `#`.
+  (char-set #\#))
+
+(define whitespace-chars
+  ;; A run of text ends at whitespace, and at the end of the line.
+  (char-set #\space #\tab #\newline #\return))
+
+(define brace-chars
+  ;; Superscripts and subscripts end at the closing brace.
+  (char-set #\}))
+
+(define label-stop-chars
+  ;; A footnote label ends at `]`, at the `:` before a definition, and at the
+  ;; end of the line.
+  (char-set #\] #\: #\newline #\return))
+
+(define close-bracket-chars
+  ;; A footnote body ends at `]`, newlines and all.
+  (char-set #\]))
+
+(define link-stop-chars
+  ;; A link's target and description end at `]` and at the end of the line.
+  (char-set #\] #\newline #\return))
+
+(define (run-end str len pos stop-chars stop?)
+  "Return the end of the run of @var{str} from @var{pos} that stops at the
+first character of @var{stop-chars} at which @var{stop?} holds, or at
+@var{len}.  @var{stop?} is given the string, its length and the position of the
+candidate, so a candidate that turns out not to end the run is taken as content
+and the scan goes on after it."
+  (let loop
+    ((i pos))
+    (let ((candidate (or (string-index str stop-chars i len) len)))
+      (if (or (>= candidate len)
+              (stop? str len candidate)) candidate
+          (loop (1+ candidate))))))
+
+(define (run-body str pos end)
+  "Return the body of the run of @var{str} from @var{pos} to @var{end}.
+The run is one string; an empty run is @code{'()}, the body an empty `(* ...)'
+match has."
+  (if (> end pos)
+      (substring str pos end)
+      '()))
+
+(define (always-stop str len i)
+  "Stop at every candidate: a run ends at the first character of its set." #t)
+
+(define (lone-carriage-return? str len i)
+  "Return @code{#t} when the candidate at @var{i} is a carriage return that does
+not end a line, because no newline follows it."
+  (and (char=? (string-ref str i) #\return)
+       (or (>= (+ i 1) len)
+           (not (char=? (string-ref str
+                                    (+ i 1)) #\newline)))))
+
+(define (line-end? str len i)
+  "Return @code{#t} for every candidate but a lone carriage return.
+This is for stop sets that already hold nothing but the characters that end the
+construct -- the newlines, `]' and `:' of a footnote, `|' of a table cell -- so
+the only question left is whether a carriage return really ends a line."
+  (not (lone-carriage-return? str len i)))
+
+(define (nl-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} ends a line.
+That is a newline, or a carriage return with a newline after it.  Use this where
+the candidate set holds characters that do not end a line at all, such as the
+space and tab of a description key."
+  (let ((c (string-ref str i)))
+    (or (char=? c #\newline)
+        (and (char=? c #\return)
+             (< (+ i 1) len)
+             (char=? (string-ref str
+                                 (+ i 1)) #\newline)))))
+
+(define (char-run str len pos stop-chars stop?)
+  "Consume the run of @var{str} from @var{pos} that stops at the first
+character of @var{stop-chars} that @var{stop?} accepts, and return it as one
+string.  An empty run succeeds with no text, as an empty `(* ...)' match did."
+  (let ((end (run-end str len pos stop-chars stop?)))
+    (list end
+          (run-body str pos end))))
+
+(define (char-run+ str len pos stop-chars stop?)
+  "Like @code{char-run}, but an empty run fails, as a `(+ ...)' match did."
+  (let ((end (run-end str len pos stop-chars stop?)))
+    (and (> end pos)
+         (list end
+               (substring str pos end)))))
+
+(define (raw-run str len pos end-pat)
+  "Consume everything up to the first @var{end-pat} match as one string.
+This is what a block's content is: the body a
+@code{(* (and (not-followed-by END-PAT) peg-any))} would have produced, in one
+piece."
+  (char-run str len pos raw-stop-chars end-pat))
+
+(define (inline-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} ends a run of inline text.
+That is the end of the line, or an inline construct that really begins here;
+a character that could begin one but does not is plain text."
+  (let ((c (string-ref str i)))
+    (or (char=? c #\newline)
+        (char=? c #\return)
+        (inline-special str len i))))
+
+(define (link-target-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} ends a link target.
+A `]' does so only when it closes the link or opens its description, which is
+what the link patterns themselves decide."
+  (if (char=? (string-ref str i) #\])
+      (or (link-close str len i)
+          (link-sep str len i))
+      (line-end? str len i)))
+
+(define (link-description-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} ends a link's description.
+Inside a description a `][' is ordinary text; only `]]' closes it."
+  (if (char=? (string-ref str i) #\])
+      (link-close str len i)
+      (line-end? str len i)))
+
+(define (whitespace-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} is whitespace or a line end."
+  (let ((c (string-ref str i)))
+    (or (char=? c #\space)
+        (char=? c #\tab)
+        (nl-end? str len i))))
+
+(define (desc-key-end? str len i)
+  "Return @code{#t} when the candidate at @var{i} ends a description key.
+That is the end of the line, or the whitespace run before the `::' that
+separates the key from the detail -- a decision the `desc-sep' pattern makes."
+  (or (nl-end? str len i)
+      (and (desc-sep str len i) #t)))
+
+(define (line-content-scanner str len pos)
+  "Consume the rest of the line as one string.
+A line of Org text holds anything but a newline, and an empty rest of line is a
+successful empty match, as the `(* ...)' this replaces was."
+  (char-run str len pos nl-chars always-stop))
+
+(define (table-cell-scanner str len pos)
+  "Consume the rest of one table cell as one string.
+A cell holds anything but its separator and the end of the line, and an empty
+cell is a successful empty match."
+  (char-run str len pos table-stop-chars line-end?))
+
+(define (inline-text-scanner str len pos)
+  "Consume one run of plain inline text, and return it as one string.
+Fails when there is nothing to consume, as the `(+ ...)' this replaces did."
+  (char-run+ str len pos inline-stop-chars inline-end?))
+
+(define (superscript-content-scanner str len pos)
+  "Consume a superscript's text, up to its closing brace, as one string."
+  (char-run+ str len pos brace-chars always-stop))
+
+(define (subscript-content-scanner str len pos)
+  "Consume a subscript's text, up to its closing brace, as one string."
+  (char-run+ str len pos brace-chars always-stop))
+
+(define (footnote-label-scanner str len pos)
+  "Consume a footnote's label, as one string."
+  (char-run+ str len pos label-stop-chars line-end?))
+
+(define (footnote-content-scanner str len pos)
+  "Consume a footnote's text, up to the closing bracket, as one string."
+  (char-run str len pos close-bracket-chars always-stop))
+
+(define (link-target-scanner str len pos)
+  "Consume a link's target, up to `]]', `][' or the end of the line."
+  (char-run+ str len pos link-stop-chars link-target-end?))
+
+(define (link-description-scanner str len pos)
+  "Consume a link's description, up to `]]' or the end of the line."
+  (char-run+ str len pos link-stop-chars link-description-end?))
+
+(define (raw-url-body-scanner str len pos)
+  "Consume the body of a raw URL, up to whitespace or the end of the line."
+  (char-run+ str len pos whitespace-chars whitespace-end?))
+
+(define (desc-key-scanner str len pos)
+  "Consume the key of a description item, up to `::' or the end of the line."
+  (char-run+ str len pos whitespace-chars desc-key-end?))
+
+(define (lang-scanner str len pos)
+  "Consume the language of a source block, as one string."
+  (char-run str len pos nl-chars line-end?))
+
+(define (keyword-key-scanner str len pos)
+  "Consume a keyword's key, as one string."
+  (char-run+ str len pos keyword-key-chars line-end?))
+
+(define (keyword-value-scanner str len pos)
+  "Consume a keyword's value, as one string."
+  (char-run str len pos nl-chars line-end?))
+
+(define (comment-content-scanner str len pos)
+  "Consume the text of a commented line, as one string."
+  (char-run str len pos nl-chars line-end?))
+
+(define (fixed-width-content-scanner str len pos)
+  "Consume the text of a fixed-width line, as one string."
+  (char-run str len pos nl-chars line-end?))
+
+(define (src-content-scanner str len pos)
+  "Consume a source block's content, up to its end marker, as one string."
+  (raw-run str len pos end-src))
 
 ;; =====================================================================
 ;; Core Document Structure
@@ -135,13 +424,9 @@
 
 (define-peg-pattern table-sep none "|")
 (define-peg-pattern table-column-sep none "+")
-;; `table-sep' is `|' (124), so the fast range stops short of it and resumes
-;; after it; the checked branch handles that one character, the line ends and
-;; anything outside printable ASCII.
-(define-peg-pattern table-cell all
-                    (* (or (range #\space #\{)
-                           (range #\} #\~) "\t"
-                           (and (not-followed-by (or table-sep eol)) peg-any))))
+;; One table cell, scanned as one run rather than a character at a time; see
+;; the Run Scanners section above.
+(define-peg-pattern table-cell all table-cell-scanner)
 
 (define-peg-pattern table-row-end none
                     (or (and table-sep
@@ -197,8 +482,7 @@
                     (and (+ ws) "::"
                          (or (+ ws)
                              (followed-by eol))))
-(define-peg-pattern desc-key all
-                    (+ (and (not-followed-by (or nl desc-sep eof)) peg-any)))
+(define-peg-pattern desc-key all desc-key-scanner)
 (define-peg-pattern item-indent body
                     (* (or " " "\t")))
 
@@ -213,6 +497,32 @@
 
 (define-list-item unordered-item list-bullet)
 (define-list-item ordered-item list-num)
+
+(define (markup-content-candidates delimiter)
+  "Return the characters at which the body of a markup construct can end:
+its delimiter, the end of the line, and the whitespace a delimiter or a line
+end could follow."
+  (char-set delimiter #\space #\tab #\newline #\return))
+
+(define (markup-content-stop? delimiter)
+  "Return the predicate that ends a markup construct's body at the candidate it
+is given.  The body stops at DELIMITER itself, at the end of the line, and at
+whitespace the closing delimiter or a line end follows -- which is what the
+`name-body' pattern decided: a space before the closing delimiter is not part
+of the body, so `*bold *' is not bold, while `*bo ld*' is."
+  (lambda (str len i)
+    (let ((c (string-ref str i)))
+      (cond
+        ((char=? c delimiter)
+         #t)
+        ((or (char=? c #\space)
+             (char=? c #\tab))
+         (and (< (+ i 1) len)
+              (or (char=? (string-ref str
+                                      (+ i 1)) delimiter)
+                  (nl-end? str len
+                           (+ i 1)))))
+        (else (nl-end? str len i))))))
 
 ;; A single `list' element may hold items of any kind, in any mix.  Org lets a
 ;; list change its bullet type part-way through and lets a nested list use a
@@ -249,8 +559,7 @@
                     (or "#+BEGIN_SRC" "#+begin_src"))
 (define-peg-pattern end-src none
                     (or "#+END_SRC" "#+end_src"))
-(define-peg-pattern lang all
-                    (* (and (not-followed-by nl) peg-any)))
+(define-peg-pattern lang all lang-scanner)
 
 (define-peg-pattern src-block all
                     (and begin-src
@@ -261,8 +570,7 @@
                          end-src
                          (* ws)
                          eol))
-(define-peg-pattern src-content all
-                    (* (and (not-followed-by end-src) peg-any)))
+(define-peg-pattern src-content all src-content-scanner)
 
 ;; =====================================================================
 ;; Verse, Center & Comment Blocks
@@ -300,10 +608,8 @@
 ;; In-buffer settings and metadata such as `#+TITLE:` or `#+AUTHOR:`.
 ;; The key is restricted so that block delimiters (`#+BEGIN_SRC`) can never be
 ;; mistaken for a keyword.
-(define-peg-pattern keyword-key all
-                    (+ (and (not-followed-by (or ws nl ":")) peg-any)))
-(define-peg-pattern keyword-value all
-                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern keyword-key all keyword-key-scanner)
+(define-peg-pattern keyword-value all keyword-value-scanner)
 (define-peg-pattern keyword-lead none "#+")
 (define-peg-pattern keyword-colon none ":")
 (define-peg-pattern keyword all
@@ -316,8 +622,7 @@
                          eol))
 
 ;; Lines beginning with `#' (but not `#+') are comments and are not exported.
-(define-peg-pattern comment-content all
-                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern comment-content all comment-content-scanner)
 (define-peg-pattern comment-hash none "#")
 (define-peg-pattern comment-line all
                     (and lead-ws
@@ -329,8 +634,7 @@
                          eol))
 
 ;; Lines beginning with `: ' are fixed-width textual lines.
-(define-peg-pattern fixed-width-content all
-                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern fixed-width-content all fixed-width-content-scanner)
 (define-peg-pattern fixed-width-colon none ":")
 (define-peg-pattern fixed-width all
                     (and lead-ws fixed-width-colon
@@ -355,14 +659,9 @@
 (define-peg-pattern paragraph all
                     (and (not-followed-by special-starts) line-content eol))
 
-;; Ordinary printable ASCII cannot be a newline, so a run of it is consumed by
-;; a single range test per character.  Everything else (non-ASCII text, control
-;; characters, the newline itself) falls through to the checked branch, which
-;; is what actually decides where the line ends.  `#\~' is 126 and both
-;; newline characters are below 32, so the range can never swallow one.
-(define-peg-pattern line-content all
-                    (* (or (range #\space #\~) "\t"
-                           (and (not-followed-by nl-char) peg-any))))
+;; A whole line of text, scanned as one run rather than a character at a time;
+;; see the Run Scanners section above.
+(define-peg-pattern line-content all line-content-scanner)
 
 ;; =====================================================================
 ;; Inline Org Markup
@@ -385,18 +684,18 @@
 (define-peg-pattern inline-escape body
                     (and escape-backslash inline-escape-char))
 
-(define-inline-markup inline-code inline-code-delimiter inline-code-body
+(define-inline-markup inline-code inline-code-body-run inline-code-delimiter
                       inline-code-content "~")
-(define-inline-markup inline-verbatim inline-verbatim-delimiter
-                      inline-verbatim-body inline-verbatim-content "=")
-(define-inline-markup inline-italic inline-italic-delimiter inline-italic-body
-                      inline-italic-content "/")
-(define-inline-markup inline-bold inline-bold-delimiter inline-bold-body
+(define-inline-markup inline-verbatim inline-verbatim-body-run
+                      inline-verbatim-delimiter inline-verbatim-content "=")
+(define-inline-markup inline-italic inline-italic-body-run
+                      inline-italic-delimiter inline-italic-content "/")
+(define-inline-markup inline-bold inline-bold-body-run inline-bold-delimiter
                       inline-bold-content "*")
-(define-inline-markup inline-underline inline-underline-delimiter
-                      inline-underline-body inline-underline-content "_")
-(define-inline-markup inline-strike inline-strike-delimiter inline-strike-body
-                      inline-strike-content "+")
+(define-inline-markup inline-underline inline-underline-body-run
+                      inline-underline-delimiter inline-underline-content "_")
+(define-inline-markup inline-strike inline-strike-body-run
+                      inline-strike-delimiter inline-strike-content "+")
 
 ;; Superscript and subscript, in their unambiguous braced form
 ;; (`x^{2}` and `x_{i}`).  The bare forms (`x^2`) are intentionally not
@@ -405,13 +704,11 @@
 (define-peg-pattern mark-underscore none "_")
 (define-peg-pattern mark-brace-open none "{")
 (define-peg-pattern mark-brace-close none "}")
-(define-peg-pattern inline-superscript-content all
-                    (+ (and (not-followed-by "}") peg-any)))
+(define-peg-pattern inline-superscript-content all superscript-content-scanner)
 (define-peg-pattern inline-superscript body
                     (and mark-caret mark-brace-open inline-superscript-content
                          mark-brace-close))
-(define-peg-pattern inline-subscript-content all
-                    (+ (and (not-followed-by "}") peg-any)))
+(define-peg-pattern inline-subscript-content all subscript-content-scanner)
 (define-peg-pattern inline-subscript body
                     (and mark-underscore mark-brace-open
                          inline-subscript-content mark-brace-close))
@@ -426,10 +723,8 @@
 
 ;; Footnotes: inline `[fn::def]', reference `[fn:label]' and
 ;; definition `[fn:label:def]'.
-(define-peg-pattern footnote-label all
-                    (+ (and (not-followed-by (or "]" ":" nl)) peg-any)))
-(define-peg-pattern footnote-content all
-                    (* (and (not-followed-by "]") peg-any)))
+(define-peg-pattern footnote-label all footnote-label-scanner)
+(define-peg-pattern footnote-content all footnote-content-scanner)
 (define-peg-pattern fn-open none "[fn:")
 (define-peg-pattern fn-open-inline none "[fn::")
 (define-peg-pattern fn-close none "]")
@@ -444,13 +739,8 @@
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
 (define-peg-pattern link-sep none "][")
-(define-peg-pattern link-target-content all
-                    (+ (and (not-followed-by "]]")
-                            (not-followed-by "][")
-                            (not-followed-by nl) peg-any)))
-(define-peg-pattern link-description-content all
-                    (+ (and (not-followed-by "]]")
-                            (not-followed-by nl) peg-any)))
+(define-peg-pattern link-target-content all link-target-scanner)
+(define-peg-pattern link-description-content all link-description-scanner)
 
 (define-peg-pattern inline-link-with-desc all
                     (and link-open link-target-content link-sep
@@ -478,8 +768,7 @@
                              (or "rcs://" "rc://"))))
 
 (define-peg-pattern inline-raw-url all
-                    (and url-scheme
-                         (+ (and (not-followed-by (or ws nl)) peg-any))))
+                    (and url-scheme raw-url-body-scanner))
 
 ;; Ordered so the single-character markers are tried first and the multi-
 ;; character constructs (footnotes, links) and the scheme scan come last:
@@ -502,49 +791,11 @@
                         inline-link-no-desc
                         inline-raw-url))
 
-;; Fast path for ordinary inline text.  `inline-special' can only start with
-;; one of the markup characters (`* / ~ = + ^ _ \\ [') or with a letter that
-;; can begin a URL scheme (h f s w g t m i r).  Every other character is known
-;; to be plain, so a whole run of them costs a few range tests instead of one
-;; `not-followed-by' check against the entire inline grammar per character.
-;; The scheme-initial letters are deliberately left out of the fast path, so a
-;; URL glued to the end of a word is still recognised.
-(define-peg-pattern inline-plain-char body
-                    (or (range #\a #\e)
-                        (range #\j #\l)
-                        (range #\n #\q)
-                        (range #\u #\v)
-                        (range #\x #\z)
-                        (range #\A #\Z)
-                        (range #\0 #\9)
-                        " "
-                        "\t"
-                        "."
-                        ","
-                        ";"
-                        ":"
-                        "?"
-                        "!"
-                        "("
-                        ")"
-                        "-"
-                        "'"
-                        "\""
-                        "%"
-                        "&"
-                        "@"
-                        "#"
-                        "{"
-                        "}"
-                        "<"
-                        ">"
-                        "|"
-                        "$"))
-
-(define-peg-pattern inline-text all
-                    (+ (or inline-plain-char
-                           (and (not-followed-by (or inline-special nl-char))
-                                peg-any))))
+;; A whole run of ordinary inline text, scanned as one run rather than a
+;; character at a time; see the Run Scanners section above.  The scanner stops
+;; at a character that can begin a construct only once `inline-special' agrees
+;; that one really does, so a URL glued to the end of a word is still found.
+(define-peg-pattern inline-text all inline-text-scanner)
 
 (define-peg-pattern inline-element body
                     (or inline-special inline-text))
@@ -756,6 +1007,13 @@ tree and any remaining unparsed items."
 
 ;; The extensions Org renders as an image when they appear in a `file:' link or
 ;; in a bare path.  Lower-case, without the leading dot.
+;; The `#+NAME:' prefixes that name something *inside* this document, so a link
+;; to one is a fragment rather than a URL of its own.  A figure is the one the
+;; parser anchors, so `fig:' is the one that resolves; the rest are listed so
+;; that they are at least classified as the cross-references they are.
+(define org-cross-reference-prefixes
+  '("fig:" "tbl:" "tab:" "lst:" "eq:"))
+
 (define org-image-extensions
   '("png" "jpg"
     "jpeg"
@@ -845,6 +1103,9 @@ suffix dropped, so it is ready to be used as an href or a file name.
        (cons 'heading
              (substring path 1
                         (string-length path))))
+      ((any (lambda (prefix)
+              (string-prefix? prefix path)) org-cross-reference-prefixes)
+       (cons 'internal path))
       ((string-prefix? "file://" path)
        (cons 'file
              (substring path 7
@@ -952,23 +1213,398 @@ becomes @code{my-first-section}.  Headings carry this as their @code{id} and
                         (cons #\- out) #t)))))))
 
 ;; =====================================================================
+;; Figures
+;; =====================================================================
+;;
+;; Org gives the element that follows `#+CAPTION:' a caption and `#+NAME:' a
+;; name.  When that element is a link to an image, the caption, the name and the
+;; image are one thing: a figure.  They are folded together here, once, so the
+;; renderers only have to wrap what they are handed -- and so the name a
+;; `[[fig:arch]]' link points at is the very id the figure carries.
+
+(define (keyword-value-of node key)
+  "Return the value of @var{node} when it is the keyword @var{key}, else @code{#f}.
+Keyword names are compared case-insensitively, as Org does, and surrounding
+whitespace is stripped; a keyword with an empty value counts as no value at
+all, so `#+NAME:' on its own stays an ordinary keyword line."
+  (match node
+    (('keyword ('keyword-key name)
+      ('keyword-value value))
+     (and (string? name)
+          (string-ci=? name key)
+          (let ((trimmed (trim-whitespace value)))
+            (and (not (string-null? trimmed)) trimmed))))
+    (_ #f)))
+
+(define (inline-nodes-of ast)
+  "Return @var{ast} as a list of inline nodes, whatever shape it came in."
+  (cond
+    ((string? ast)
+     (list ast))
+    ((and (pair? ast)
+          (symbol? (car ast)))
+     (list ast))
+    ((list? ast)
+     ast)
+    (else '())))
+
+(define (line-image-link text)
+  "Return @code{(target . description)} when @var{text} is exactly one image link.
+Surrounding whitespace is ignored and @var{description} is @code{#f} when the
+link has none; a line that holds anything else returns @code{#f}."
+  (let ((nodes (remove (lambda (node)
+                         (and (string? node)
+                              (string-null? (trim-whitespace node))))
+                       (inline-nodes-of (inline-org->ast text)))))
+    (match nodes
+      ((('inline-link-with-desc ('link-target-content target)
+         ('link-description-content description)))
+       (and (org-image-link? target)
+            (cons target description)))
+      ((('inline-link-no-desc ('link-target-content target)))
+       (and (org-image-link? target)
+            (cons target #f)))
+      (_ #f))))
+
+(define (paragraph-image-link node)
+  "Return @code{(target . description)} when @var{node} is one image link."
+  (match node
+    (('paragraph ('line-content text))
+     (line-image-link text))
+    (_ #f)))
+
+(define (keyword-key? node)
+  "Return @code{#t} when @var{node} is a `#+CAPTION:' or `#+NAME:' keyword."
+  (and (pair? node)
+       (or (keyword-value-of node "NAME")
+           (keyword-value-of node "CAPTION")) #t))
+
+(define (make-figure name caption image)
+  "Build the figure node for @var{name}, @var{caption} and the image pair @var{image}.
+What a figure does not have is left out rather than set to @code{#f}, so a
+renderer can tell `no caption' from `an empty caption'."
+  `(figure ,@(if name
+                 (list (list 'figure-name name))
+                 '())
+           ,@(if caption
+                 (list (list 'figure-caption caption))
+                 '())
+           (figure-image (figure-target ,(car image))
+                         ,@(if (cdr image)
+                               (list (list 'figure-description
+                                           (cdr image)))
+                               '()))))
+
+(define (pending-value pending key)
+  "Return the first value of keyword @var{key} among @var{pending}, or @code{#f}."
+  (any (lambda (node)
+         (keyword-value-of node key))
+       (reverse pending)))
+
+(define (pending-caption pending)
+  "Return the captions among @var{pending} joined with a space, or @code{#f}.
+Org allows one caption line per `#+CAPTION:' and a figure's caption is all of
+them, in order."
+  (let ((captions (filter-map (lambda (node)
+                                (keyword-value-of node "CAPTION"))
+                              (reverse pending))))
+    (and (pair? captions)
+         (string-join captions " "))))
+
+;; The elements a `#+NAME:' can name: the ones that render as something a link
+;; can land on.  A name in front of anything else stays an ordinary keyword
+;; line, so a name is never attached to an element that has nowhere to carry it.
+(define namable-elements
+  '(paragraph table
+              src-block
+              example-block
+              quote-block
+              verse-block
+              center-block
+              export-html-block
+              org-list
+              nested-list
+              separator))
+
+(define (namable-element? node)
+  "Return @code{#t} when @var{node} is an element a `#+NAME:' can name."
+  (and (pair? node)
+       (memq (car node) namable-elements)))
+
+(define (make-named name node)
+  "Build the node for the element @var{node} that `#+NAME:' calls @var{name}.
+The name is the element's id, so a `[[tbl:data]]' or `[[name]]' link -- which
+is classified as a local fragment -- lands on the element itself."
+  `(named (element-name ,name)
+          ,node))
+
+(define (named-parts node)
+  "Return @code{(name element)} for the named element @var{node}."
+  (list (child-value node
+                     'element-name)
+        (and (pair? (cdr node))
+             (caddr node))))
+
+(define (flush-keywords pending out)
+  "Put the keyword run @var{pending} -- held newest first -- back into @var{out},
+which is building the result newest first, so the run keeps document order."
+  (append pending out))
+
+(define (without-name-keywords pending)
+  "Return the keyword run @var{pending}, newest first, minus its `#+NAME:' lines.
+A `#+NAME:' that named an element is consumed by it, exactly as it is by a
+figure; a `#+CAPTION:' describes something this parser does not caption, so it
+stays a keyword line where the writer put it."
+  (filter (lambda (node)
+            (not (keyword-value-of node "NAME"))) pending))
+
+(define (collect-named-elements nodes)
+  "Fold `#+NAME:' -- and, for an image, `#+CAPTION:' -- into what it describes.
+A run of `#+CAPTION:' and `#+NAME:' keywords immediately before a paragraph
+holding a single image link becomes one @code{figure} node.  Before any other
+namable element a `#+NAME:' becomes a @code{named} node wrapping it, so the
+name is the id that element carries and a cross-reference to the name resolves.
+Keywords that describe something else keep their place, in document order."
+  (let loop
+    ((nodes nodes)
+     (pending '())
+     (out '()))
+    (cond
+      ((null? nodes)
+       (reverse (flush-keywords pending out)))
+      (else (let ((node (car nodes)))
+              (if (keyword-key? node)
+                  (loop (cdr nodes)
+                        (cons node pending) out)
+                  (let ((image (and (pair? pending)
+                                    (paragraph-image-link node)))
+                        (name (and (pair? pending)
+                                   (pending-value pending "NAME"))))
+                    (cond
+                      (image (loop (cdr nodes)
+                                   '()
+                                   (cons (make-figure (pending-value pending
+                                                                     "NAME")
+                                                      (pending-caption pending)
+                                                      image) out)))
+                      ((and name
+                            (namable-element? node))
+                       (loop (cdr nodes)
+                             '()
+                             (cons (make-named name node)
+                                   (flush-keywords (without-name-keywords
+                                                    pending) out))))
+                      (else (loop (cdr nodes)
+                                  '()
+                                  (cons node
+                                        (flush-keywords pending out))))))))))))
+
+(define (node-names node)
+  "Return every name @var{node} and its children carry as a `figure-name' or an
+`element-name', in document order.  This is what a link may resolve against."
+  (cond
+    ((not (pair? node))
+     '())
+    ((and (or (eq? (car node)
+                   'figure-name)
+              (eq? (car node)
+                   'element-name))
+          (string? (cadr node)))
+     (cons (cadr node)
+           (append-map node-names
+                       (cddr node))))
+    (else (append-map node-names
+                      (cdr node)))))
+
+(define (document-names nodes)
+  "Return the names the elements of the parsed document @var{nodes} carry."
+  (delete-duplicates (append-map node-names
+                                 (if (and (pair? nodes)
+                                          (symbol? (car nodes)))
+                                     (list nodes) nodes))))
+
+;; The names the elements of the document being parsed carry.  The inline
+;; parser resolves a bare link target against them, and the renderers bind this
+;; for the length of one document, so `[[name]]' finds the element that
+;; `#+NAME: name' names; anywhere else the list is empty and a target is left
+;; exactly as it was written.
+(define element-names
+  (make-parameter '()))
+
+(define (name-link-target target names)
+  "Return the fragment @var{target} should point at, when a name makes it one.
+A target that is exactly the name of an element in this document is a
+cross-reference, as it is in Org -- `[[diagram]]' finds `#+NAME: diagram' -- so
+it becomes the fragment `#diagram'.  A target that says what it is -- it has a
+scheme, a `file:' prefix, a leading `#' or `*', or a `::search' of its own -- is
+left alone; only a bare target is resolved, and only when the name exists."
+  (and (string? target)
+       (member target names)
+       (eq? (org-link-protocol target)
+            'file)
+       (not (org-link-search target))
+       (string-append "#" target)))
+
+(define (resolve-name-links node names)
+  "Rewrite the links of @var{node} that `#+NAME:' targets name.
+An inline parse comes back with the links the line wrote; this is the pass that
+makes a bare `[[name]]' point at the element named @var{name} instead of at a
+file that is not there.  A document's inline text is parsed as it is rendered,
+so `org->ast' records the names and the renderers bind them here, by parsing
+within @code{(element-names ...)}."
+  (cond
+    ((string? node)
+     node)
+    ((pair? node)
+     (if (eq? (car node)
+              'link-target-content)
+         (let* ((target (and (pair? (cdr node))
+                             (cadr node)))
+                (fragment (name-link-target target names)))
+           (if fragment
+               (list 'link-target-content fragment) node))
+         (cons (car node)
+               (map (lambda (child)
+                      (resolve-name-links child names))
+                    (cdr node)))))
+    (else node)))
+
+(define (figure-parts node)
+  "Return @code{(name caption target description)} for the figure @var{node}.
+Every part the figure does not have comes back as @code{#f}."
+  (let ((image (child-of node
+                         'figure-image)))
+    (list (child-value node
+                       'figure-name)
+          (child-value node
+                       'figure-caption)
+          (child-value image
+                       'figure-target)
+          (child-value image
+                       'figure-description))))
+
+(define (child-of node key)
+  "Return the first child of @var{node} whose head is @var{key}, or @code{#f}.
+This is the whole child, for a child that is itself a node -- the difference
+between the @code{figure-image} of a figure and the value of a plain
+@code{(key value)} pair, which @code{child-value} returns."
+  (and (pair? node)
+       (any (lambda (child)
+              (and (pair? child)
+                   (eq? (car child) key) child))
+            (cdr node))))
+
+(define (child-value node key)
+  "Return the value of the first @code{(key value)} child of @var{node}, or @code{#f}."
+  (let ((child (child-of node key)))
+    (and child
+         (cadr child))))
+
+;; =====================================================================
 ;; Parser Entry Point
 ;; =====================================================================
 
 (define (inline-org->ast text)
   "Parse inline Org-mode markup from @var{text}.
 Applies the @code{inline-content} PEG pattern to process bold, italic,
-raw URLs, inline code, and links, returning the resulting AST."
-  (peg:tree (match-pattern inline-content text)))
+raw URLs, inline code, and links, returning the resulting AST.  A link whose
+bare target names an element of the document being rendered resolves to that
+element; see @code{element-names}."
+  (resolve-name-links (parse-with inline-content text)
+                      (element-names)))
 
 (define (org->ast str)
   "Parse an entire Org-mode document string @var{str} into an Abstract Syntax Tree.
 This is the main entry point for the parser. It matches the @code{org-doc}
 PEG pattern and then applies @code{process-ast} to resolve hierarchical
-constructs like nested lists.  A single top-level element comes back as that
+constructs like nested lists, folds `#+NAME:' and `#+CAPTION:' keywords into
+the elements they describe, and resolves a link whose bare target names an
+element of the document.  A single top-level element comes back as that
 element's node; several come back as a list of nodes."
-  (let ((tree (peg:tree (match-pattern org-doc str))))
-    (if (and (pair? tree)
-             (symbol? (car tree)))
-        (process-ast tree)
-        (map process-ast tree))))
+  (let* ((tree (parse-with org-doc str))
+         (single? (and (pair? tree)
+                       (symbol? (car tree))))
+         (nodes (collect-named-elements (map process-ast
+                                             (if single?
+                                                 (list tree) tree)))))
+    (if (and single?
+             (pair? nodes)
+             (null? (cdr nodes)))
+        (car nodes) nodes)))
+
+;; =====================================================================
+;; Tree Collapsing
+;; =====================================================================
+;;
+;; A parse comes back as a tree of fragments, and the fragments that sit next to
+;; each other have to be merged into the strings they spell.  Guile's
+;; `(ice-9 peg)' does that with `string-collapse', whose `string-group' builds
+;; each run of adjacent strings by consing onto the run it has built so far:
+;; quadratic in the length of the run.  A scanner that consumes text a character
+;; at a time produces exactly such a run, one fragment per character, so for a
+;; long line that quadratic term dominates the entire parse.
+;;
+;; The same contract is implemented here in a single pass, so collapsing is
+;; linear.  This is `string-collapse' with its `string-group' rewritten, which
+;; is why the trees it produces are identical rather than merely similar:
+;;
+;;   - anything that is not a list comes back unchanged;
+;;   - every child is collapsed before its parent is looked at;
+;;   - a maximal run of adjacent strings becomes their concatenation;
+;;   - a list of strings is concatenated on its own and does not join the run
+;;     around it, because only plain strings extend a run in `string-group';
+;;   - anything else keeps its place;
+;;   - a result of exactly one element is unwrapped to that element.
+
+(define (string-list? value)
+  "Return @code{#t} when @var{value} is a non-empty list of strings."
+  (and (list? value)
+       (pair? value)
+       (every string? value)))
+
+(define (string-group-linear lst)
+  "Group runs of adjacent strings in @var{lst}, in one pass.
+This is @code{(ice-9 peg simplify-tree)}'s @code{string-group} with the run
+built by cons and a single reverse, so it is linear in the length of @var{lst}."
+  (let loop
+    ((nodes lst)
+     (run '())
+     (out '()))
+    (cond
+      ((null? nodes)
+       (reverse (if (null? run) out
+                    (cons (reverse run) out))))
+      ((string? (car nodes))
+       (loop (cdr nodes)
+             (cons (car nodes) run) out))
+      (else (loop (cdr nodes)
+                  '()
+                  (if (null? run)
+                      (cons (car nodes) out)
+                      (cons (car nodes)
+                            (cons (reverse run) out))))))))
+
+(define (collapse-tree tree)
+  "Merge the adjacent string fragments of the parse tree @var{tree} in one pass.
+Equivalent to @code{(ice-9 peg simplify-tree)}'s @code{string-collapse} for
+every tree this parser produces, but linear in the number of fragments instead
+of quadratic in the length of a run."
+  (if (not (list? tree)) tree
+      (let ((collapsed (map (lambda (child)
+                              (if (string-list? child)
+                                  (apply string-append child) child))
+                            (string-group-linear (map collapse-tree tree)))))
+        (if (and (pair? collapsed)
+                 (null? (cdr collapsed)))
+            (car collapsed) collapsed))))
+
+(define (parse-with pattern str)
+  "Parse @var{str} with the compiled PEG @var{pattern}, returning its tree.
+This is @code{(ice-9 peg)}'s @code{match-pattern} followed by a linear tree
+collapse instead of the quadratic one.  The string is copied first because a
+compiled pattern caches its results by string identity, as @code{match-pattern}
+itself notes."
+  (let ((result (pattern (string-copy str)
+                         (string-length str) 0)))
+    (and result
+         (collapse-tree (cadr result)))))

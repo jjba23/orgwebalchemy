@@ -17,8 +17,26 @@ an [[file:photo.png][inline image]], a bare [[images/diagram.svg]] and a jump
 [[file:notes.org::*Introduction][into another file]].
 A local anchor [[#custom-id][custom id]] and a heading link [[*Introduction][up top]].
 Mail [[mailto:hello@example.org][the author]] or dial [[tel:+123456]].
+A figure cross-reference [[fig:showcase]].
+
+#+NAME: fig:showcase
+#+CAPTION: The showcase diagram
+[[images/showcase.svg][a showcase diagram]]
 
 [fn:one] The footnote definition.
+
+* Named elements
+#+NAME: tbl:metrics
+| Metric | Value |
+|--------+-------|
+| Users  | 1024  |
+
+#+NAME: feature-list
+- one
+- two
+
+A table cross-reference [[tbl:metrics]] and one to [[feature-list]].
+The figure [[fig:showcase]] is named too.
 
 * TODO [#A] A Task :work:urgent:
 - [ ] unchecked item

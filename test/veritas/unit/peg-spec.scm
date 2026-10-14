@@ -176,7 +176,10 @@
 (define whole-document-suite
   (suite "Whole-document parsing"
          (test "the feature fixture is parsed all the way to the end"
-               (assert-length #:expect 33
+               ;; One top-level node per element, including the figure the
+               ;; caption and name keywords fold into and the elements the
+               ;; `#+NAME:' keywords name.
+               (assert-length #:expect 40
                               #:got feature-ast)
                (assert-not-empty #:got feature-ast)
                (assert-eq #:expect 'keyword
@@ -348,6 +351,248 @@
                                                      (org-anchor "My Section"))
                              #:got (org-link-href "*My Section")))))
 
+;; A `#+CAPTION:' / `#+NAME:' keyword run describing an image link is folded
+;; into one `figure' node, so the renderers are handed a single element and the
+;; name the figure carries is the target a `[[fig:arch]]' link resolves to.
+(define figures-suite
+  (suite "Figures"
+         (test "a name, a caption and an image become one figure"
+               (assert-equal #:expect '(figure (figure-name "fig:arch")
+                                               (figure-caption
+                                                "The architecture")
+                                               (figure-image (figure-target
+                                                              "file:diagram.png")
+                                                             (figure-description
+                                                              "a diagram")))
+                             #:got (car (nodes (string-append
+                                                "#+NAME: fig:arch\n"
+                                                "#+CAPTION: The architecture\n"
+                                                "[[file:diagram.png][a diagram]]\n")))))
+         (test "a name alone is still a figure"
+               (assert-equal #:expect '(figure (figure-name "fig:x")
+                                               (figure-image (figure-target
+                                                              "images/x.svg")))
+                             #:got (car (nodes
+                                               "#+NAME: fig:x\n[[images/x.svg]]\n"))))
+         (test "a caption alone is still a figure"
+               (assert-equal #:expect '(figure (figure-caption "A caption")
+                                               (figure-image (figure-target
+                                                              "file:a.png")
+                                                             (figure-description
+                                                              "alt")))
+                             #:got (car (nodes (string-append
+                                                "#+CAPTION: A caption\n"
+                                                "[[file:a.png][alt]]\n")))))
+         (test "several captions join in document order"
+               (assert-equal #:expect '(figure (figure-caption "One two")
+                                               (figure-image (figure-target
+                                                              "file:a.png")))
+                             #:got (car (nodes (string-append
+                                                "#+CAPTION: One\n"
+                                                "#+CAPTION: two\n"
+                                                "[[file:a.png]]\n")))))
+         (test "a caption describing something else stays a keyword"
+               (assert-equal #:expect '(keyword (keyword-key "CAPTION")
+                                                (keyword-value "A table"))
+                             #:got (car (nodes "#+CAPTION: A table\n| a |\n")))
+               (assert-equal #:expect '(keyword (keyword-key "CAPTION")
+                                                (keyword-value "Not a figure"))
+                             #:got (car (nodes (string-append
+                                                "#+CAPTION: Not a figure\n"
+                                                "[[https://example.org][link]]\n")))))
+         (test "a link to an image elsewhere is no local figure"
+               (assert-equal #:expect '(keyword (keyword-key "CAPTION")
+                                                (keyword-value "c"))
+                             #:got (car (nodes (string-append "#+CAPTION: c\n"
+                                                "[[https://example.org/a.png]]\n")))))
+         (test "an empty name is no name"
+               (assert-equal #:expect '(keyword (keyword-key "NAME")
+                                                keyword-value)
+                             #:got (car (nodes "#+NAME:\n[[file:a.png]]\n"))))
+         (test "a figure keeps its place among the paragraphs around it"
+               (assert-equal #:expect '((paragraph (line-content "before"))
+                                        (figure (figure-caption "c")
+                                                (figure-image (figure-target
+                                                               "file:a.png")))
+                                        (paragraph (line-content "after")))
+                             #:got (nodes (string-append "before\n"
+                                                         "#+CAPTION: c\n"
+                                                         "[[file:a.png]]\n"
+                                                         "after\n"))))
+         (test "a figure reports its parts, missing ones as #f"
+               (assert-equal #:expect '("fig:arch" "The architecture"
+                                        "file:diagram.png" "a diagram")
+                             #:got (figure-parts (car (nodes (string-append
+                                                              "#+NAME: fig:arch\n"
+                                                              "#+CAPTION: The architecture\n"
+                                                              "[[file:diagram.png][a diagram]]\n")))))
+               (assert-equal #:expect '(#f "A caption" "file:a.png" #f)
+                             #:got (figure-parts (car (nodes (string-append
+                                                              "#+CAPTION: A caption\n"
+                                                              "[[file:a.png]]\n"))))))))
+
+;; A `#+NAME:' targets an element, the way it targets a figure, so the id a
+;; cross-reference link points at is the id the element carries and neither
+;; `[[tbl:data]]' nor a bare `[[name]]' can point at nothing.
+(define named-elements-suite
+  (suite "Named elements"
+         (test "a name becomes the id of the element under it"
+               (assert-equal #:expect '(named (element-name "tbl:data")
+                                              (table (table-row (table-cell
+                                                                 " a "))))
+                             #:got (car (nodes (string-append
+                                                "#+NAME: tbl:data\n" "| a |\n"))))
+               (assert-equal #:expect '(named (element-name "q")
+                                              (quote-block (quote-content
+                                                                          "x\n")))
+                             #:got (car (nodes (string-append "#+NAME: q\n"
+                                                              "#+BEGIN_QUOTE\nx\n"
+                                                              "#+END_QUOTE\n")))))
+         (test "a named element reports its name and itself"
+               (assert-equal #:expect '("code" (src-block (lang "scheme")
+                                                          (src-content "(x)\n")))
+                             #:got (named-parts (car (nodes (string-append
+                                                             "#+NAME: code\n"
+                                                             "#+BEGIN_SRC scheme\n"
+                                                             "(x)\n"
+                                                             "#+END_SRC\n"))))))
+         (test "a name in front of nothing stays a keyword"
+               (assert-equal #:expect '(keyword (keyword-key "NAME")
+                                                (keyword-value "lonely"))
+                             #:got (org->ast "#+NAME: lonely\n"))
+               (assert-equal #:expect '((keyword (keyword-key "NAME")
+                                                 (keyword-value "c"))
+                                        (comment-line (comment-content "x")))
+                             #:got (nodes "#+NAME: c\n# x\n")))
+         (test "a caption before a table keeps its place, in document order"
+               (assert-equal #:expect '((keyword (keyword-key "CAPTION")
+                                                 (keyword-value "c"))
+                                        (named (element-name "n")
+                                               (paragraph (line-content "t"))))
+                             #:got (nodes (string-append "#+CAPTION: c\n"
+                                                         "#+NAME: n\n" "t\n"))))
+         (test "a named element still names the image below it a figure"
+               (assert-equal #:expect '(figure (figure-name "diagram")
+                                               (figure-image (figure-target
+                                                              "file:d.png")))
+                             #:got (car (nodes (string-append
+                                                "#+NAME: diagram\n"
+                                                "[[file:d.png]]\n")))))
+         (test "the names of a document are the names its elements carry"
+               (assert-equal #:expect '("tbl:data" "diagram")
+                             #:got (document-names (org->ast (string-append
+                                                              "#+NAME: tbl:data\n"
+                                                              "| a |\n\n"
+                                                              "#+NAME: diagram\n"
+                                                              "[[file:d.png]]\n"))))
+               (assert-equal #:expect '()
+                             #:got (document-names (org->ast "no names here\n"))))
+         (test "a bare target naming an element becomes a fragment link"
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "#diagram"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[diagram]]")))
+               (assert-equal #:expect '(inline-link-with-desc (link-target-content
+                                                               "#diagram")
+                                                              (link-description-content
+                                                               "it"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[diagram][it]]"))))
+         (test "a prefixed cross-reference needs no rewriting"
+               (assert-equal #:expect "#tbl:data"
+                             #:got (org-link-href "tbl:data"))
+               (assert-equal #:expect "#fig:arch"
+                             #:got (org-link-href "fig:arch")))
+         (test "a name wins over the file path it would otherwise be"
+               ;; A bare target that is exactly a name describes the element,
+               ;; so it becomes a fragment even when it looks like a file name.
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "#notes.org"))
+                             #:got (parameterize ((element-names '("notes.org")))
+                                     (inline-org->ast "[[notes.org]]"))))
+         (test "a target that says what it is is left alone"
+               ;; A URL, a `#' fragment and a `*Heading' all keep their
+               ;; meaning, and so does a target no element of the document
+               ;; carries a name for.
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "https://x/diagram"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[https://x/diagram]]")))
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "#diagram"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[#diagram]]")))
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "*diagram"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[*diagram]]")))
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "diagram::*H"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[diagram::*H]]")))
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "nowhere"))
+                             #:got (parameterize ((element-names '("diagram")))
+                                     (inline-org->ast "[[nowhere]]"))))
+         (test "no names in scope leaves every target as written"
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "diagram"))
+                             #:got (inline-org->ast "[[diagram]]")))))
+
+;; The line, cell and inline scanners hand the tree one fragment per run of
+;; text rather than one per character.  These tests pin down where a run is
+;; allowed to end, which is the part that must not drift.
+(define scanners-suite
+  (suite "Run scanners"
+         (test "a long line is one string, not one fragment per character"
+               (let ((content (cadr (car (nodes (string-append (make-string
+                                                                            10000
+                                                                            #\z)
+                                                               "\n"))))))
+                 (assert-equal #:expect 'line-content
+                               #:got (car content))
+                 (assert-true (string? (cadr content)))
+                 (assert-equal #:expect 10000
+                               #:got (string-length (cadr content)))))
+         (test "a plain inline run is one string, not one per character"
+               (assert-equal #:expect '(inline-text "plain text here")
+                             #:got (inline-org->ast "plain text here"))
+               (assert-equal #:expect '(inline-text
+                                        "the h f s w g t m i r letters")
+                             #:got (inline-org->ast
+                                    "the h f s w g t m i r letters")))
+         (test "a run ends where an inline construct really begins"
+               (assert-equal #:expect '((inline-text "see")
+                                        (inline-raw-url (url-scheme "https://")
+                                                        "example.org/a"))
+                             #:got (inline-org->ast "seehttps://example.org/a"))
+               (assert-equal #:expect '((inline-text "a")
+                                        (inline-bold-content "b"))
+                             #:got (inline-org->ast "a*b*")))
+         (test "a tab and non-ASCII text are ordinary line content"
+               (assert-equal #:expect '(paragraph (line-content "a\tb"))
+                             #:got (car (nodes "a\tb\n")))
+               (assert-equal #:expect '(paragraph (line-content "café 中文"))
+                             #:got (car (nodes "café 中文\n"))))
+         (test "a line ends at a newline, and a table cell at its separator"
+               (assert-equal #:expect '(table (table-row (table-cell " a ")
+                                                         (table-cell " b ")))
+                             #:got (car (nodes "| a | b |\n")))
+               (assert-equal #:expect '(table (table-row (table-cell "   ")))
+                             #:got (car (nodes "|   |\n"))))
+         (test "a lone carriage return is content, as it always was"
+               (assert-equal #:expect '(table (table-row (table-cell " a\rb ")))
+                             #:got (car (nodes "| a\rb |\n")))
+               (assert-equal #:expect '(paragraph (line-content "a"))
+                             #:got (car (nodes "a\nb\n"))))
+         (test "a table row needs no trailing newline"
+               (assert-equal #:expect '(table (table-row (table-cell " a ")
+                                                         table-cell))
+                             #:got (car (nodes "| a |"))))
+         (test "the last line of a document without a newline parses"
+               (assert-equal #:expect '(paragraph (line-content "text"))
+                             #:got (org->ast "text")))))
+
 (define (spec)
   (veritas-run document-elements-suite
                heading-metadata-suite
@@ -356,4 +601,7 @@
                mixed-list-suite
                link-targets-suite
                heading-anchors-suite
+               figures-suite
+               named-elements-suite
+               scanners-suite
                whole-document-suite))

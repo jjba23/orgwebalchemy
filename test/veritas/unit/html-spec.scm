@@ -204,6 +204,11 @@
   (parameterize ((image-classes '("rounded")))
     (thunk)))
 
+(define (with-demo-figure-classes thunk)
+  (parameterize ((figure-classes '("numbered"))
+                 (figure-caption-classes '("caption")))
+    (thunk)))
+
 (define parameterized-classes-suite
   (suite "Class Parameter Customization"
          (test "customizing heading classes dynamically"
@@ -587,6 +592,97 @@
                                            #:expect
                                            "<p><img class=\"rounded\" src=\"photo.png\" alt=\"photo.png\" /></p>"))))))
 
+;; A captioned image becomes a real figure, and its name becomes the id a
+;; `[[fig:arch]]' link -- which the link classifier already turned into the
+;; fragment `#fig:arch' -- lands on.
+(define figures-suite
+  (suite "Figures"
+         (test "a captioned image renders as a figure with its caption"
+               (assert-equal #:got (org->html "#+CAPTION: The architecture
+[[file:diagram.png][a diagram]]
+")
+                #:expect
+                "<figure><img src=\"diagram.png\" alt=\"a diagram\" /><figcaption>The architecture</figcaption></figure>"))
+         (test "a named figure carries its name as its id"
+               (assert-equal #:got (org->html
+                                              "#+NAME: fig:arch\n[[file:diagram.png]]\n")
+                #:expect
+                "<figure id=\"fig:arch\"><img src=\"diagram.png\" alt=\"diagram.png\" /></figure>"))
+         (test "a caption names an image with no alt text of its own"
+               (assert-equal #:got (org->html
+                                              "#+CAPTION: A caption\n[[file:a.png]]\n")
+                #:expect
+                "<figure><img src=\"a.png\" alt=\"A caption\" /><figcaption>A caption</figcaption></figure>"))
+         (test "a cross-reference link points at the figure"
+               (assert-contains #:expect (org->html "#+NAME: fig:arch
+#+CAPTION: The arch
+[[file:a.png]]
+
+See [[fig:arch]].
+")
+                                #:got "<figure id=\"fig:arch\">")
+               (assert-contains #:expect (org->html "#+NAME: fig:arch
+#+CAPTION: The arch
+[[file:a.png]]
+
+See [[fig:arch]].
+")
+                                #:got "<a href=\"#fig:arch\">fig:arch</a>"))
+         (test "figure classes can be customised"
+               (with-demo-figure-classes (lambda ()
+                                           (assert-equal #:got (org->html
+                                                                "#+NAME: fig:x
+#+CAPTION: c
+[[file:a.png]]
+")
+                                            #:expect
+                                            "<figure class=\"numbered\" id=\"fig:x\"><img src=\"a.png\" alt=\"c\" /><figcaption class=\"caption\">c</figcaption></figure>"))))))
+
+;; A `#+NAME:' above any other element is that element's id, so the fragment a
+;; `[[tbl:data]]' link carries -- and a bare `[[name]]' too -- lands on the
+;; element itself rather than on nothing.
+(define named-elements-suite
+  (suite "Named elements"
+         (test "a named table carries its name as its id"
+               (assert-equal #:got (org->html "#+NAME: tbl:data\n| a |\n")
+                #:expect
+                "<table id=\"tbl:data\"><tbody><tr><td> a </td></tr></tbody></table>"))
+         (test "the id joins the classes an element already has"
+               (assert-equal #:got (org->html "#+NAME: code
+#+BEGIN_SRC scheme
+(x)
+#+END_SRC
+")
+                             #:expect
+                             "<pre id=\"code\" class=\"scheme\">(x)\n</pre>"))
+         (test "a prefixed cross-reference link points at the element"
+               (assert-contains #:expect (org->html "#+NAME: tbl:data
+| a |
+
+See [[tbl:data]].
+")
+                                #:got "<a href=\"#tbl:data\">tbl:data</a>"))
+         (test "a bare link to a name points at the element as well"
+               (assert-contains #:expect (org->html "#+NAME: diagram
+[[file:d.png]]
+
+See [[diagram]].
+")
+                                #:got "<a href=\"#diagram\">diagram</a>")
+               (assert-contains #:expect (org->html "#+NAME: diagram
+[[file:d.png]]
+
+See [[diagram]].
+")
+                                #:got "<figure id=\"diagram\">"))
+         (test "a name the document does not carry is left a file link"
+               (assert-contains #:expect (org->html "#+NAME: tbl:data
+| a |
+
+See [[nowhere]].
+")
+                                #:got "<a href=\"nowhere\">nowhere</a>"))))
+
 (define (spec)
   (veritas-run make-sxml-attrs-suite
                inline-org-suite
@@ -602,4 +698,6 @@
                extended-block-suite
                heading-metadata-suite
                links-and-images-suite
+               figures-suite
+               named-elements-suite
                feature-fixture-suite))
