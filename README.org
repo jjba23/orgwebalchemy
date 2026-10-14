@@ -398,8 +398,11 @@ of its own.
 - Comments: single lines beginning with ~#~ and ~#+begin_comment~ blocks
 - Fixed-width lines (~: text~)
 - Horizontal separators (~--------~) five or more dashes
-- Tables
-- ~#+begin_src~
+- Tables, including empty cells: ~| a || b |~ is a row of three cells in both
+  renderers, the middle one empty, and a line that is nothing but its closing
+  bar (~|~ on its own) is a row of one empty cell
+- ~#+begin_src~, with or without a language (a block written without one still
+  renders as a source block, just without a language class)
 - ~#+begin_example~
 - ~#+begin_quote~ (with nested parsing)
 - ~#+begin_verse~ and ~#+begin_center~
@@ -609,8 +612,8 @@ way to keep their meaning:
 * Benchmarks
 
 The parser and the two renderers are benchmarked with
-[[https://codeberg.org/jjba23/veritas][Veritas]], the same test framework
-used for the unit suite.  The benchmarks live in
+[[https://codeberg.org/jjba23/veritas][Veritas]], the same test framework used
+for the unit suite.  The benchmarks live in
 [[file:test/veritas/benchmark/scope.scm]] and are deliberately kept out of the
 normal test run: they are selected by the test type, so nothing slows down
 ~maak test~.
@@ -631,16 +634,18 @@ enough to move a figure by ten percent.  On an AMD Ryzen 5 7640U, under Guile
 
 | Workload                               | Iterations | Total (ms) | Per operation (µs) |
 |----------------------------------------+------------+------------+--------------------|
-| Parse the feature fixture              |       2000 |     617.82 |             308.91 |
-| Parse README.org                       |        200 |     869.72 |            4348.60 |
-| Render the feature fixture to HTML     |       2000 |    3752.72 |            1876.36 |
-| Render the feature fixture to Markdown |       2000 |    3393.53 |            1696.76 |
-| Parse a 50-clause inline paragraph     |       2000 |    4345.74 |            2172.87 |
+| Parse the feature fixture              |       2000 |     592.82 |             296.41 |
+| Parse README.org                       |        200 |     674.73 |            3373.65 |
+| Render the feature fixture to HTML     |       2000 |    3576.71 |            1788.35 |
+| Render the feature fixture to Markdown |       2000 |    3296.28 |            1648.14 |
+| Parse a 50-clause inline paragraph     |       2000 |    4204.41 |            2102.21 |
 
-Rendering is a separate pass over the AST, and HTML and Markdown cost about the
-same, as one would expect from two renderers walking the same tree.  Inline
-parsing is still the most expensive stage per byte: a 50-clause paragraph has
-many alternatives to try at every position.
+That is a parser that reads a 1.4 KB Org document in 0.3 ms and this 39 KB file
+in 3.4 ms, and two renderers that walk the resulting tree at the same speed as
+each other.  A 50-clause paragraph of inline markup -- fifty links, bold runs
+and code spans in one line -- takes 2.1 ms; inline parsing is the most expensive
+stage per byte, and deliberately so, because a line that carries that many
+constructs has to try every alternative at every position of it.
 
 ** Allocation and GC pressure
 
@@ -651,11 +656,17 @@ allocation pressure, not the memory a result keeps.
 
 | Workload                               | Allocated per operation | GC runs per 1000 ops | GC time per operation |
 |----------------------------------------+-------------------------+----------------------+-----------------------|
-| Parse the feature fixture              |              228.61 KiB |                28.50 |                0.41 ms |
-| Parse README.org                       |             3226.31 KiB |               395.00 |                5.59 ms |
-| Render the feature fixture to HTML     |             1359.97 KiB |               168.00 |                2.45 ms |
-| Render the feature fixture to Markdown |             1362.75 KiB |               168.00 |                2.38 ms |
-| Parse a 50-clause inline paragraph     |             1691.04 KiB |               213.00 |                3.03 ms |
+| Parse the feature fixture              |              228.67 KiB |                28.50 |                0.40 ms |
+| Parse README.org                       |             2630.23 KiB |               315.00 |                4.67 ms |
+| Render the feature fixture to HTML     |             1360.62 KiB |               166.00 |                2.43 ms |
+| Render the feature fixture to Markdown |             1362.94 KiB |               167.00 |                2.42 ms |
+| Parse a 50-clause inline paragraph     |             1691.05 KiB |               208.50 |                3.01 ms |
+
+Parsing this file asks for about 2.7 MB for 39 KB of input, roughly 70 bytes per
+input byte, and the collection counts say a parse of this size is still likely
+to trigger a collection of its own.  Rendering allocates less than parsing,
+since the inline parser only ever sees the text nodes rather than the whole
+document.
 
 The last column is Guile's own ~gc-time-taken~, which is collector *CPU* time:
 Guile sums the time of its GC marker threads, so on a multi-core machine a
@@ -664,145 +675,31 @@ wall-clock cost.  It says how much collector work a workload causes, not what
 share of the clock it takes.  Allocation and collection counts are exact and
 are the stable half of this table.
 
-What the numbers say:
-
-- Parsing ~README.org~ allocates about 3.2 MB for 45 KB of input, roughly 74
-  bytes per input byte.  The collection counts say what that means in practice:
-  at this size a parse is still likely to trigger a collection of its own, but
-  the parse used to ask for twice as much and a document twice this size now
-  fits where it used to collect.
-- What that allocation is spent on has changed twice.  It used to be the text:
-  every character of ordinary prose became a one-character string and a cons
-  cell before the tree was collapsed, which is why plain prose used to allocate
-  five times as much per byte as it does now.  When the first scanners landed,
-  what was left was the AST and the lists above it -- and the second round of
-  scanners, which took the text of links, footnotes, markup and description
-  keys out of the character-by-character loop as well, halved it again: plain
-  prose and a long line now allocate five and a hundred times less.
-- Rendering allocates less than parsing, since the inline parser only sees the
-  text nodes rather than the whole document.
-
 ** Fragments and the collapse pass
 
 A parse first produces a tree of *fragments*, which a collapse pass then merges
-into the strings they spell.  The scanners now hand that pass one fragment per
-run of text instead of one per character, so the third table the suite prints
+into the strings they spell.  The run scanners hand that pass one fragment per
+run of text rather than one per character, so the third table the suite prints
 counts the fragments a parse produces and times the merge:
 
 | Document                 | Fragments handed to the collapse pass | Collapse (ms) |
 |--------------------------+--------------------------------------+---------------|
-| Feature fixture (1.4 KB) |                                   82 |         0.046 |
-| README.org               |                                  922 |         0.460 |
+| Feature fixture (1.4 KB) |                                   82 |         0.043 |
+| README.org               |                                  768 |         0.385 |
 | Plain prose (32 KB)      |                                  400 |         0.216 |
-| One 45 KB line           |                                    1 |         0.007 |
+| One 45 KB line           |                                    1 |         0.005 |
 
 The counts are what the scanners produced, before the merge, so they say
 nothing about how the collapse pass is written.  32 KB of plain prose arrives
-as 400 fragments -- one per line -- where it used to arrive as 38,400, one per
-character, and a single 45 KB line arrives as one.  What is left is the reading
-and writing of the tree's own nodes, which is why the merge is now well under a
-millisecond even for a document the size of this one.
+as 400 fragments -- one per line -- and a single 45 KB line as one, which is
+why the merge is well under a millisecond even for a document the size of this
+one.  What is left is the reading and writing of the tree's own nodes, and the
+allocation that goes with it: the ~cons~-and-reverse the pattern compiler emits
+for every node, rather than the scanning of the text.
 
-** Before and after the parser optimisation
-
-Parsing used to spend most of its time deciding, character by character,
-whether the next character could start something special, and then merging the
-resulting per-character fragments back into strings.  The scanners now consume
-a whole run at a time: the end of a run of ordinary text is found with one
-C-level search, and the run reaches the tree as one string.
-
-| Input                            | Before (ms) | After (ms) | Speedup |
-|----------------------------------+-------------+------------+---------|
-| ~README.org~ (this file)         |      18.341 |      3.892 | 4.71x   |
-| 4 KB of plain prose              |       1.270 |      0.243 | 5.22x   |
-| 32 KB of plain prose             |      10.745 |      2.073 | 5.18x   |
-| One 45 KB line                   |    2301.937 |      0.198 | 11632x  |
-| Inline markup corpus (7 KB)      |       2.427 |      0.208 | 11.67x  |
-| Tables (6 KB)                    |       2.217 |      1.120 | 1.98x   |
-| Mixed document (8 KB)            |       3.427 |      1.946 | 1.76x   |
-| ~sample-org-text.org~ (0.3 KB)   |       0.129 |      0.061 | 2.13x   |
-| ~sample-org-blocks.org~ (0.3 KB) |       0.097 |      0.047 | 2.05x   |
-| ~sample-org-table.org~ (0.1 KB)  |       0.029 |      0.020 | 1.48x   |
-
-The one long line is not a typo, it is the point: merging the fragments of a
-long line was quadratic in their number, so 45 KB of single-line text cost 2.3
-seconds on its own, for a document the parser now reads in a fifth of a
-millisecond.  Allocation came down with it -- 32 KB of prose asks for 1.9 MB
-instead of 10.3 MB, and a single 45 KB line for 102 KB instead of 10.6 MB.
-
-Allocation fell further than the clock did, which is the point of doing this
-work in the scanner rather than in the collapse pass.  Against the same parser
-before its second round of scanners -- the same features, the same inputs, the
-same measurement -- this file asks for 3.2 MB instead of 14.0 MB, plain prose
-for five times less, a single 45 KB line for ninety-seven times less, and the
-inline markup corpus for eight times less; description lists come down five and
-a half times and a document that is mostly footnotes and links four times,
-while the two least improved, tables and a mixed document, halve.  Nothing
-about the output changed: the same inputs parse to the same AST before and
-after, checked input by input.
-
-| Input                       | Fragments before | Fragments after | Collapse before (ms) | Collapse after (ms) |
-|-----------------------------+------------------+-----------------+----------------------+---------------------|
-| ~README.org~ (this file)    |            42152 |             922 |                8.066 |               0.430 |
-| 4 KB of plain prose         |             4800 |              50 |                0.704 |               0.023 |
-| 32 KB of plain prose        |            38400 |             400 |                6.084 |               0.186 |
-| One 45 KB line              |            48000 |               1 |             2370.666 |               0.004 |
-| Inline markup corpus (7 KB) |             7400 |              40 |                1.720 |               0.020 |
-| Tables (6 KB)               |             5540 |             723 |                0.634 |               0.253 |
-| Mixed document (8 KB)       |             6060 |             660 |                0.942 |               0.309 |
-
-These are not two runs of two programs: the parser as published (~git HEAD~)
-and the parser now are loaded into one process, given the same inputs, and
-checked for identical output before any timing starts.  All ten inputs above
-parse to the same AST under both, so the speedup is not bought by parsing
-something else.  The inputs are deliberately figure-free, because figures are a
-feature the published parser does not have -- the examples in this file are
-inside source blocks, where both parsers read them as text -- and equivalence
-for the change alone was checked separately, as *Testing* describes.  The
-~README.org~ row is this file at the length it had when the table was measured,
-which is also why it is the one row that moves when the documentation grows.
-
-What changed:
-
-- The run scanners -- the patterns that walk every line, every table cell,
-  every run of inline text, a link's target and description, a footnote's label
-  and text, the body of a markup construct, the key of a description item and
-  the body of a raw URL -- are no longer written as ~(* ...)~ or ~(+ ...)~
-  repetitions.  They are hand-written scanners that find a whole run with one
-  ~string-index~ search and hand it to the tree as one string, so the number of
-  fragments a parse produces is now proportional to the document's structure
-  rather than to its length.
-- A scanner may only stop at a character that *can* begin a construct, and it
-  stops only where the construct really begins, so ~foohttps://x~ is still a
-  link glued to a word and a stray ~*~ in prose is still just an asterisk.  Where
-  the grammar decided something by looking ahead at a character that does not
-  end the run -- a description key stops only where a ~ :: ~ really separates it
-  from its detail, a markup body stops at a delimiter only when that delimiter
-  closes it -- the scanner asks the pattern itself, so the two cannot drift.
-- The collapse pass no longer uses ~(ice-9 peg)~'s ~string-collapse~, whose
-  ~string-group~ builds each run of adjacent strings by consing onto the run it
-  has built so far and is quadratic in the length of that run.  ~collapse-tree~
-  implements the same contract in a single pass.
-
-** Where the time goes now
-
-- For ~README.org~, the collapse pass is 0.4 ms of the 3.9 ms the parse takes,
-  measured by timing the stage on its own.  In the published parser it was 8.1
-  ms of 18.3 ms, and it was the part that grew faster than the input.
-- ~(ice-9 peg)~ already memoises: every pattern defined with
-  ~define-peg-pattern~ is wrapped by ~cg-cached-parser~ in a fixed 512-entry
-  direct-mapped cache keyed on the position.  That cache is not what these
-  documents wait for -- the cost was inside the ~*~ and ~+~ scanners, which are
-  compiled inline, are not separately cached, and allocated one string per
-  character matched.  The cache size is inlined when each pattern is compiled,
-  so raising ~*cache-size*~ at run time does not affect patterns that are
-  already defined; measuring it that way was inconclusive rather than
-  informative.
-- What is left is allocation: ~README.org~ asks for about 74 bytes per input
-  byte, and most of that is the AST and the lists it is built from rather than
-  text fragments, so the next win would be in how the tree is built -- the
-  ~cons~-and-reverse the pattern compiler emits for every node -- not in how
-  the text is scanned.
+The ~README.org~ rows are this file at the length it had when the tables were
+measured, so they move a little when the documentation grows or shrinks; the
+other rows do not.
 
 These are indicative numbers, not guarantees.  Wall-clock figures move by ten to
 twenty percent between runs -- these come from a laptop that was compiling and
@@ -828,25 +725,32 @@ cover the grammar ([[file:test/veritas/unit/peg-spec.scm]]), the HTML renderer
 range of assertions (~assert-equal~, ~assert-contains~, ~assert-matches~,
 ~assert-length~, ~assert-no-error~, ...).  The parser suite covers link target
 classification, heading anchors, figures, named elements and the run scanners,
-and each renderer has its own *Links and images*, *Figures* and *Named
-elements* suites for the output it produces from them.
+and each renderer has its own *Links and images*, *Figures*, *Named elements*
+and *Empty values* suites for the output it produces from them.
 
 Two checks the suites cannot express live beside them, because they compare a
 parser against a *previous* one rather than against an expectation.  Both were
 run when the scanners were rewritten and are worth repeating after any change
 to the grammar:
 
-- *Equivalence.*  The parser as it was and the parser being changed are loaded
-  into one process -- the earlier one under a renamed module, compiled from
-  ~git show REV:src/orgwebalchemy/peg.scm~ -- given the same inputs, and every
-  whole-document and inline AST compared.  The run-scanner change was checked
-  this way on 70,858 inputs: every pair of interesting characters (printable
-  ASCII, tab, newline, carriage return, the other control characters and two
-  multi-byte characters) as documents, as inline text, and inside a link, a
-  footnote and a description list, this README, hand-written edge cases (markup
-  at every position, tables with empty cells, lines without a newline) and 5,800
-  randomly generated documents.  Zero differences -- with one deliberate
-  exception, below.
+- *Equivalence.*  The parser and the two renderers as they were and as they
+  are changed are loaded into one process -- the earlier ones under renamed
+  modules, taken from ~git show REV:src/orgwebalchemy/peg.scm~ and its
+  neighbours -- given the same inputs, and six results compared for every one
+  of them: the whole-document AST, the inline AST, and the HTML and the
+  Markdown that each renderer writes.  The run-scanner change was checked this
+  way on 70,858 inputs, and the empty-value change again on 38,412: every pair
+  of interesting characters (printable ASCII, tab, newline, carriage return,
+  the other control characters and two multi-byte characters) as documents, as
+  inline text, and inside a link, a footnote and a description list, this
+  README, the fixtures, hand-written edge cases (markup at every position,
+  tables with empty cells, lines without a newline) and 5,800 randomly
+  generated documents.  The last run reported 232 differences, every one of
+  them the empty-value change below, and no input at all that raised an error on
+  the new side, where the code before it raised on 21, each of them a table row
+  with no cells in it.  The same check after the table change below, on 38,250
+  of those inputs, found 16 that parse differently: every one of the 16 a table
+  line whose last bar is followed by nothing but the end of the line.
 - *The stop set.*  A run scanner may only leap over characters it knows cannot
   begin a construct, so ~inline-stop-chars~ is checked against the grammar
   itself: at every position where ~inline-special~ really matches, the
@@ -854,14 +758,24 @@ to the grammar:
   the README, the fixtures, every pair of bytes and random markup -- 6,024
   constructs -- found no gap.
 
-The one deliberate difference: a run of two or more ~#+CAPTION:~ or ~#+NAME:~
-lines in front of an element that is not a figure used to come out of the
-folder *reversed*.  It now keeps document order, which is what the surrounding
-documentation always claimed and what a keyword run should do; the equivalence
-run reports it as a deliberate change rather than a difference, and a unit test
-pins it down.  Everything else about the two rounds of scanner work is
-output-identical, and the new ~#+NAME:~ feature is a change to the language, so
-it is covered by tests rather than by equivalence.
+Three deliberate differences have come out of these runs.  A run of two or more
+~#+CAPTION:~ or ~#+NAME:~ lines in front of an element that is not a figure used
+to come out of the folder *reversed*; it now keeps document order, which is what
+the surrounding documentation always claimed and what a keyword run should do,
+and a unit test pins it down.  And the text of something that is empty is now
+the empty string, rather than the bare tag symbol an empty `(* ...)' match
+leaves behind: an empty table cell keeps its column, a source block written
+without a language still renders as a source block, and an empty keyword,
+comment, fixed-width line, footnote or block stays in the document instead of
+vanishing from it.  And a table row is now read the way Org reads one, by the
+bars that separate its cells: a bar closes a row when nothing but the end of the
+line follows it, which makes a line that is only its closing bar (~|~ on its
+own) a row of one empty cell rather than a row with no cells in it, makes
+~| a ||~ a row of two cells rather than a paragraph, and stops a row that ends
+the input from gaining an empty cell for the newline it does not have.  Each of
+those shapes has a test.  Everything else about the parser is output-identical,
+and the ~#+NAME:~ feature is a change to the language, so it is covered by tests
+rather than by equivalence.
 
 One trap when adding tests: ~veritas~ collects a test's assertions by filtering
 the test body for procedures, so assertions wrapped in a ~let~, ~when~ or

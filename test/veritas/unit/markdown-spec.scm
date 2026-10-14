@@ -251,6 +251,33 @@ See [[tbl:data]].
                              #:got (org->markdown
                                                   "#+NAME: q\n#+BEGIN_QUOTE\nx\n#+END_QUOTE\n")))))
 
+;; An empty value is an empty string, not a missing node; see the same suite in
+;; the HTML renderer's file for what that used to cost.
+(define empty-values-markdown-suite
+  (suite "Empty values"
+         (test "an empty table cell keeps its column"
+               (assert-equal #:expect "| a |  | b |\n| --- | --- | --- |\n\n"
+                             #:got (org->markdown "|a||b|\n")))
+         (test "a source block written without a language still renders"
+               (assert-equal #:expect "```\n(x)\n```\n\n"
+                             #:got (org->markdown
+                                                  "#+BEGIN_SRC\n(x)\n#+END_SRC\n")))
+         (test "an empty keyword value still renders its line"
+               (assert-equal #:expect "KEY: \n\n"
+                             #:got (org->markdown "#+KEY:\n")))
+         (test "an empty block still renders as the block it is"
+               (assert-equal #:expect "> \n\n"
+                             #:got (org->markdown
+                                                  "#+BEGIN_QUOTE\n#+END_QUOTE\n"))
+               (assert-equal #:expect "```\n```\n\n"
+                             #:got (org->markdown
+                                                  "#+BEGIN_EXAMPLE\n#+END_EXAMPLE\n")))
+         (test "a line that is only its closing bar holds one empty cell"
+               ;; This used to be a row with no cells in it, which Markdown
+               ;; wrote as nothing at all.
+               (assert-equal #:expect "|  |\n| --- |\n\n"
+                             #:got (org->markdown "|\n")))))
+
 (define (spec)
   (veritas-run inline-markdown-suite
                block-markdown-suite
@@ -260,4 +287,5 @@ See [[tbl:data]].
                links-and-images-markdown-suite
                figures-markdown-suite
                named-elements-markdown-suite
+               empty-values-markdown-suite
                document-markdown-suite))

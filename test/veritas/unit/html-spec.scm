@@ -683,6 +683,40 @@ See [[nowhere]].
 ")
                                 #:got "<a href=\"nowhere\">nowhere</a>"))))
 
+;; An empty value is an empty string, not a missing node.  A pattern that
+;; accumulates `all' turns an empty match into a bare tag symbol, and a renderer
+;; that reads that symbol as a node with no value at all used to drop the cell,
+;; the block or the line it belonged to.
+
+(define empty-values-suite
+  (suite "Empty values"
+         (test "an empty table cell keeps its column"
+               (assert-equal #:got (org->html "|a||b|\n")
+                #:expect
+                "<table><tbody><tr><td>a</td><td /><td>b</td></tr></tbody></table>"))
+         (test "a source block written without a language still renders"
+               (assert-equal #:got (org->html "#+BEGIN_SRC\n(x)\n#+END_SRC\n")
+                             #:expect "<pre>(x)\n</pre>"))
+         (test "an empty keyword value still renders its line"
+               (assert-equal #:got (org->html "#+KEY:\n")
+                             #:expect "<div>KEY: </div>"))
+         (test "an empty block still renders as the block it is"
+               (assert-equal #:got (org->html "#+BEGIN_QUOTE\n#+END_QUOTE\n")
+                             #:expect "<blockquote />")
+               (assert-equal #:got (org->html
+                                              "#+BEGIN_EXAMPLE\n#+END_EXAMPLE\n")
+                             #:expect "<pre></pre>"))
+         (test "a line that is only its closing bar holds one empty cell"
+               ;; Org reads `|' as a row of one empty field; this used to come
+               ;; out as a row with no cells in it at all, and the blank a table
+               ;; line keeps after its bar is that cell's text, as it is for
+               ;; `| a |'.
+               (assert-equal #:got (org->html "|\n")
+                             #:expect
+                             "<table><tbody><tr><td /></tr></tbody></table>")
+               (assert-equal #:got (org->html "| \n")
+                #:expect "<table><tbody><tr><td> </td></tr></tbody></table>"))))
+
 (define (spec)
   (veritas-run make-sxml-attrs-suite
                inline-org-suite
@@ -700,4 +734,5 @@ See [[nowhere]].
                links-and-images-suite
                figures-suite
                named-elements-suite
+               empty-values-suite
                feature-fixture-suite))

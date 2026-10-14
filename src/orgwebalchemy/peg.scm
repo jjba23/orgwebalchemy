@@ -19,7 +19,7 @@
   #:declarative? #t
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
-  #:use-module (ice-9 pretty-print)
+  #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
   #:export (org->ast inline-org->ast
                      figure-parts
@@ -33,7 +33,13 @@
                      org-link-href
                      org-link-display
                      org-image-link?
-                     org-anchor))
+                     org-anchor
+                     heading-parts
+                     inline-nodes
+                     split-checkbox
+                     list-item-kind
+                     group-list-items
+                     trim-whitespace))
 
 ;; =====================================================================
 ;; Macros for PEG Pattern Generation
@@ -42,17 +48,15 @@
 ;; A block is a begin marker, its content, an end marker and the end of the
 ;; line.  The content is everything up to the end marker, it reaches the tree
 ;; as one string, and it carries the tag `define-peg-pattern' would have put on
-;; it -- a bare tag when there is no content at all, as an empty `(* ...)' match
-;; produced.
+;; it -- an empty string when the block is empty, so that an empty block is
+;; still the block it is, rather than a bare tag with nothing under it.
 (define-syntax-rule (define-block-pattern name begin-pat end-pat content-pat)
   (begin
     (define (content-pat str len pos)
       (let ((end (run-end str len pos raw-stop-chars end-pat)))
         (list end
-              (if (> end pos)
-                  (list 'content-pat
-                        (substring str pos end))
-                  'content-pat))))
+              (list 'content-pat
+                    (substring str pos end)))))
     (define-peg-pattern name all
                         (and begin-pat
                              eol
@@ -72,7 +76,7 @@
       (let ((delimiter (string-ref delim 0)))
         (lambda (str len pos)
           "Consume the body of the markup construct as one string."
-          (char-run+ str len pos
+          (text-run+ str len pos
                      (markup-content-candidates delimiter)
                      (markup-content-stop? delimiter)))))
     (define-peg-pattern name-content all name-scan)
@@ -206,14 +210,6 @@ and the scan goes on after it."
               (stop? str len candidate)) candidate
           (loop (1+ candidate))))))
 
-(define (run-body str pos end)
-  "Return the body of the run of @var{str} from @var{pos} to @var{end}.
-The run is one string; an empty run is @code{'()}, the body an empty `(* ...)'
-match has."
-  (if (> end pos)
-      (substring str pos end)
-      '()))
-
 (define (always-stop str len i)
   "Stop at every candidate: a run ends at the first character of its set." #t)
 
@@ -244,16 +240,23 @@ space and tab of a description key."
              (char=? (string-ref str
                                  (+ i 1)) #\newline)))))
 
-(define (char-run str len pos stop-chars stop?)
+(define (text-run str len pos stop-chars stop?)
   "Consume the run of @var{str} from @var{pos} that stops at the first
 character of @var{stop-chars} that @var{stop?} accepts, and return it as one
-string.  An empty run succeeds with no text, as an empty `(* ...)' match did."
+string.  An empty run succeeds, as the empty string.
+
+Returning the empty string rather than the empty match a `(* ...)' produces is
+what keeps an empty value in its place: a pattern that accumulates `all' turns
+an empty match into the bare tag symbol, so a table cell with nothing between
+its separators would drop its column out of the row, and a source block written
+without a language would vanish from the document.  The text of something may
+be empty; it is still text."
   (let ((end (run-end str len pos stop-chars stop?)))
     (list end
-          (run-body str pos end))))
+          (substring str pos end))))
 
-(define (char-run+ str len pos stop-chars stop?)
-  "Like @code{char-run}, but an empty run fails, as a `(+ ...)' match did."
+(define (text-run+ str len pos stop-chars stop?)
+  "Like @code{text-run}, but an empty run fails, as a `(+ ...)' match did."
   (let ((end (run-end str len pos stop-chars stop?)))
     (and (> end pos)
          (list end
@@ -264,7 +267,7 @@ string.  An empty run succeeds with no text, as an empty `(* ...)' match did."
 This is what a block's content is: the body a
 @code{(* (and (not-followed-by END-PAT) peg-any))} would have produced, in one
 piece."
-  (char-run str len pos raw-stop-chars end-pat))
+  (text-run str len pos raw-stop-chars end-pat))
 
 (define (inline-end? str len i)
   "Return @code{#t} when the candidate at @var{i} ends a run of inline text.
@@ -305,74 +308,58 @@ separates the key from the detail -- a decision the `desc-sep' pattern makes."
   (or (nl-end? str len i)
       (and (desc-sep str len i) #t)))
 
-(define (line-content-scanner str len pos)
-  "Consume the rest of the line as one string.
-A line of Org text holds anything but a newline, and an empty rest of line is a
-successful empty match, as the `(* ...)' this replaces was."
-  (char-run str len pos nl-chars always-stop))
+;; The text of a paragraph line or a heading title: anything up to the newline.
+(define (line-text-scanner str len pos)
+  "Consume the rest of the line as one string."
+  (text-run str len pos nl-chars always-stop))
 
+;; The text of one table cell: anything up to the cell separator or the newline.
 (define (table-cell-scanner str len pos)
-  "Consume the rest of one table cell as one string.
-A cell holds anything but its separator and the end of the line, and an empty
-cell is a successful empty match."
-  (char-run str len pos table-stop-chars line-end?))
+  "Consume the rest of one table cell as one string."
+  (text-run str len pos table-stop-chars line-end?))
+
+;; The text a construct carries on its own line: a keyword's value, a source
+;; block's language, the text of a comment or a fixed-width line.
+(define (rest-of-line-scanner str len pos)
+  "Consume the rest of a line of a construct's own text as one string."
+  (text-run str len pos nl-chars line-end?))
 
 (define (inline-text-scanner str len pos)
   "Consume one run of plain inline text, and return it as one string.
 Fails when there is nothing to consume, as the `(+ ...)' this replaces did."
-  (char-run+ str len pos inline-stop-chars inline-end?))
+  (text-run+ str len pos inline-stop-chars inline-end?))
 
-(define (superscript-content-scanner str len pos)
-  "Consume a superscript's text, up to its closing brace, as one string."
-  (char-run+ str len pos brace-chars always-stop))
-
-(define (subscript-content-scanner str len pos)
-  "Consume a subscript's text, up to its closing brace, as one string."
-  (char-run+ str len pos brace-chars always-stop))
+(define (brace-content-scanner str len pos)
+  "Consume a superscript's or subscript's text, up to its closing brace."
+  (text-run+ str len pos brace-chars always-stop))
 
 (define (footnote-label-scanner str len pos)
   "Consume a footnote's label, as one string."
-  (char-run+ str len pos label-stop-chars line-end?))
+  (text-run+ str len pos label-stop-chars line-end?))
 
 (define (footnote-content-scanner str len pos)
   "Consume a footnote's text, up to the closing bracket, as one string."
-  (char-run str len pos close-bracket-chars always-stop))
+  (text-run str len pos close-bracket-chars always-stop))
 
 (define (link-target-scanner str len pos)
   "Consume a link's target, up to `]]', `][' or the end of the line."
-  (char-run+ str len pos link-stop-chars link-target-end?))
+  (text-run+ str len pos link-stop-chars link-target-end?))
 
 (define (link-description-scanner str len pos)
   "Consume a link's description, up to `]]' or the end of the line."
-  (char-run+ str len pos link-stop-chars link-description-end?))
+  (text-run+ str len pos link-stop-chars link-description-end?))
 
 (define (raw-url-body-scanner str len pos)
   "Consume the body of a raw URL, up to whitespace or the end of the line."
-  (char-run+ str len pos whitespace-chars whitespace-end?))
+  (text-run+ str len pos whitespace-chars whitespace-end?))
 
 (define (desc-key-scanner str len pos)
   "Consume the key of a description item, up to `::' or the end of the line."
-  (char-run+ str len pos whitespace-chars desc-key-end?))
-
-(define (lang-scanner str len pos)
-  "Consume the language of a source block, as one string."
-  (char-run str len pos nl-chars line-end?))
+  (text-run+ str len pos whitespace-chars desc-key-end?))
 
 (define (keyword-key-scanner str len pos)
   "Consume a keyword's key, as one string."
-  (char-run+ str len pos keyword-key-chars line-end?))
-
-(define (keyword-value-scanner str len pos)
-  "Consume a keyword's value, as one string."
-  (char-run str len pos nl-chars line-end?))
-
-(define (comment-content-scanner str len pos)
-  "Consume the text of a commented line, as one string."
-  (char-run str len pos nl-chars line-end?))
-
-(define (fixed-width-content-scanner str len pos)
-  "Consume the text of a fixed-width line, as one string."
-  (char-run str len pos nl-chars line-end?))
+  (text-run+ str len pos keyword-key-chars line-end?))
 
 (define (src-content-scanner str len pos)
   "Consume a source block's content, up to its end marker, as one string."
@@ -428,16 +415,30 @@ Fails when there is nothing to consume, as the `(+ ...)' this replaces did."
 ;; the Run Scanners section above.
 (define-peg-pattern table-cell all table-cell-scanner)
 
+;; The end of a row: its closing bar, or nothing at all before the end of the
+;; line, since Org lets the last bar be left out.
 (define-peg-pattern table-row-end none
                     (or (and table-sep
                              (* ws) eol)
                         (and (* ws) eol)))
 
+;; A row holds one or more cells.  Each of them is written after a bar, and a
+;; bar separates two cells unless it closes the row -- unless nothing but the
+;; end of the line follows it.  That test is what makes `| a | b |' a row of two
+;; cells, with the third bar closing it, while `| a ||' has an empty second
+;; cell.  It stands before the bar rather than after it because
+;; `(not-followed-by ...)' only sees a match that consumes something, and at the
+;; end of the input the end of a line is a match of nothing at all.
+;;
+;; A line that is nothing but its closing bar is the one case the test cannot
+;; see, because a row has to open with a bar, so the second alternative covers
+;; it and gives the one empty cell Org reads such a line as.
 (define-peg-pattern table-row-cells body
-                    (and (followed-by table-sep)
-                         (* (and table-sep
-                                 (not-followed-by table-row-end) table-cell))
-                         table-row-end))
+                    (or (and (followed-by table-sep)
+                             (+ (and (not-followed-by (and table-sep
+                                                           (* ws) eol))
+                                     table-sep table-cell)) table-row-end)
+                        (and table-sep table-cell table-row-end)))
 
 (define-peg-pattern table-row all table-row-cells)
 
@@ -559,11 +560,16 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
                     (or "#+BEGIN_SRC" "#+begin_src"))
 (define-peg-pattern end-src none
                     (or "#+END_SRC" "#+end_src"))
-(define-peg-pattern lang all lang-scanner)
+;; The language is the rest of the `#+BEGIN_SRC' line; a block written without
+;; one has an empty language, not no language, so the block still renders.
+(define-peg-pattern lang all rest-of-line-scanner)
 
+;; The marker has to be followed by whitespace or the end of the line, so
+;; `#+BEGIN_SRCfoo' is not a block; the language itself may then be empty.
 (define-peg-pattern src-block all
                     (and begin-src
-                         (+ ws)
+                         (or (+ ws)
+                             (followed-by nl))
                          lang
                          nl
                          src-content
@@ -609,7 +615,7 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
 ;; The key is restricted so that block delimiters (`#+BEGIN_SRC`) can never be
 ;; mistaken for a keyword.
 (define-peg-pattern keyword-key all keyword-key-scanner)
-(define-peg-pattern keyword-value all keyword-value-scanner)
+(define-peg-pattern keyword-value all rest-of-line-scanner)
 (define-peg-pattern keyword-lead none "#+")
 (define-peg-pattern keyword-colon none ":")
 (define-peg-pattern keyword all
@@ -622,7 +628,7 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
                          eol))
 
 ;; Lines beginning with `#' (but not `#+') are comments and are not exported.
-(define-peg-pattern comment-content all comment-content-scanner)
+(define-peg-pattern comment-content all rest-of-line-scanner)
 (define-peg-pattern comment-hash none "#")
 (define-peg-pattern comment-line all
                     (and lead-ws
@@ -634,7 +640,7 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
                          eol))
 
 ;; Lines beginning with `: ' are fixed-width textual lines.
-(define-peg-pattern fixed-width-content all fixed-width-content-scanner)
+(define-peg-pattern fixed-width-content all rest-of-line-scanner)
 (define-peg-pattern fixed-width-colon none ":")
 (define-peg-pattern fixed-width all
                     (and lead-ws fixed-width-colon
@@ -661,7 +667,7 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
 
 ;; A whole line of text, scanned as one run rather than a character at a time;
 ;; see the Run Scanners section above.
-(define-peg-pattern line-content all line-content-scanner)
+(define-peg-pattern line-content all line-text-scanner)
 
 ;; =====================================================================
 ;; Inline Org Markup
@@ -704,11 +710,11 @@ of the body, so `*bold *' is not bold, while `*bo ld*' is."
 (define-peg-pattern mark-underscore none "_")
 (define-peg-pattern mark-brace-open none "{")
 (define-peg-pattern mark-brace-close none "}")
-(define-peg-pattern inline-superscript-content all superscript-content-scanner)
+(define-peg-pattern inline-superscript-content all brace-content-scanner)
 (define-peg-pattern inline-superscript body
                     (and mark-caret mark-brace-open inline-superscript-content
                          mark-brace-close))
-(define-peg-pattern inline-subscript-content all subscript-content-scanner)
+(define-peg-pattern inline-subscript-content all brace-content-scanner)
 (define-peg-pattern inline-subscript body
                     (and mark-underscore mark-brace-open
                          inline-subscript-content mark-brace-close))
@@ -914,6 +920,101 @@ empty."
     (values todo priority title
             (or tags
                 '()))))
+
+;; =====================================================================
+;; Reading the Tree
+;; =====================================================================
+;;
+;; Both renderers walk the same tree and have to read the same things out of
+;; it -- the parts of a heading, the kind of a list item, whether an item is a
+;; checkbox.  They are read here, next to the grammar that produced them, so
+;; that the renderers only have to decide what to write and the two cannot
+;; disagree about what the tree means.
+
+(define (heading-parts children)
+  "Return @code{(todo priority tags text)} for the children of a heading.
+A heading is split into these by @code{process-ast}; anything it does not have
+comes back as @code{#f}, except the tags, which are the empty list."
+  (list (any (lambda (child)
+               (match child
+                 (('heading-todo todo)
+                  todo)
+                 (_ #f))) children)
+        (any (lambda (child)
+               (match child
+                 (('heading-priority priority)
+                  priority)
+                 (_ #f))) children)
+        (append-map (lambda (child)
+                      (match child
+                        (('heading-tags tags ...)
+                         tags)
+                        (_ '()))) children)
+        (any (lambda (child)
+               (match child
+                 (('line-content text)
+                  text)
+                 (_ #f))) children)))
+
+(define (inline-nodes ast)
+  "Return @var{ast} as a list of nodes, whatever shape it came in.
+A parser hands back one node, a list of nodes or nothing at all, depending on
+what it matched; this is the one place that shape is flattened."
+  (cond
+    ((string? ast)
+     (list ast))
+    ((and (pair? ast)
+          (symbol? (car ast)))
+     (list ast))
+    ((list? ast)
+     ast)
+    (else '())))
+
+(define (split-checkbox text)
+  "Return @code{(state . rest)} when @var{text} starts with an Org checkbox.
+@var{state} is @code{#t} for `[X] '/`[x] ' and @code{#f} for `[ ] '; @var{rest}
+is the item text with the checkbox removed.  Returns @code{#f} when @var{text}
+is not a checkbox item."
+  (match (string-match "^\\[([ xX])\\][[:space:]]+" text)
+    (#f #f)
+    (m (cons (let ((c (match:substring m 1)))
+               (or (string=? c "x")
+                   (string=? c "X")))
+             (substring text
+                        (match:end m 0))))))
+
+(define (list-item-kind item)
+  "Return the kind of a list @var{item}: @code{unordered}, @code{ordered},
+@code{description} or @code{other}."
+  (match item
+    (((quote unordered-item) . _) 'unordered)
+    (((quote ordered-item) . _) 'ordered)
+    (((quote desc-item) . _) 'description)
+    (_ 'other)))
+
+(define (group-list-items items)
+  "Group consecutive @var{items} of the same kind into @code{(kind . items)}
+runs, preserving their original order.  One Org list may mix unordered, ordered
+and description items, so each run becomes a list element of its own."
+  (let loop
+    ((items items)
+     (kind #f)
+     (acc '())
+     (groups '()))
+    (cond
+      ((null? items)
+       (reverse (if (null? acc) groups
+                    (cons (cons kind
+                                (reverse acc)) groups))))
+      ((eq? (list-item-kind (car items)) kind)
+       (loop (cdr items) kind
+             (cons (car items) acc) groups))
+      (else (loop (cdr items)
+                  (list-item-kind (car items))
+                  (list (car items))
+                  (if (null? acc) groups
+                      (cons (cons kind
+                                  (reverse acc)) groups)))))))
 
 (define (process-ast ast)
   "Recursively process the Abstract Syntax Tree @var{ast} generated by the PEG parser.
@@ -1236,18 +1337,6 @@ all, so `#+NAME:' on its own stays an ordinary keyword line."
             (and (not (string-null? trimmed)) trimmed))))
     (_ #f)))
 
-(define (inline-nodes-of ast)
-  "Return @var{ast} as a list of inline nodes, whatever shape it came in."
-  (cond
-    ((string? ast)
-     (list ast))
-    ((and (pair? ast)
-          (symbol? (car ast)))
-     (list ast))
-    ((list? ast)
-     ast)
-    (else '())))
-
 (define (line-image-link text)
   "Return @code{(target . description)} when @var{text} is exactly one image link.
 Surrounding whitespace is ignored and @var{description} is @code{#f} when the
@@ -1255,7 +1344,7 @@ link has none; a line that holds anything else returns @code{#f}."
   (let ((nodes (remove (lambda (node)
                          (and (string? node)
                               (string-null? (trim-whitespace node))))
-                       (inline-nodes-of (inline-org->ast text)))))
+                       (inline-nodes (inline-org->ast text)))))
     (match nodes
       ((('inline-link-with-desc ('link-target-content target)
          ('link-description-content description)))

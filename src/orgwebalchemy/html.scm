@@ -18,9 +18,6 @@
 (define-module (orgwebalchemy html)
   #:declarative? #t
   #:use-module (ice-9 match)
-  #:use-module (ice-9 peg)
-  #:use-module (ice-9 pretty-print)
-  #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
   #:use-module (sxml simple)
   #:use-module (orgwebalchemy peg)
@@ -154,19 +151,8 @@ preserving raw HTML nodes."
 
 ;;; Inline Org -> SXML Transformation
 
-(define (split-checkbox text)
-  "Return @code{(state . rest)} when @var{text} starts with an Org checkbox.
-@var{state} is @code{#t} for `[X] '/`[x] ' and @code{#f} for `[ ] '; @var{rest}
-is the item text with the checkbox removed.  Returns @code{#f} when @var{text}
-is not a checkbox item."
-  (match (string-match "^\\[([ xX])\\][[:space:]]+" text)
-    (#f #f)
-    (m (cons (let ((c (match:substring m 1)))
-               (or (string=? c "x")
-                   (string=? c "X")))
-             (substring text
-                        (match:end m 0))))))
-
+;; @var{checkbox} is the value @code{split-checkbox} returns: @code{#f}, or the
+;; state of the box and the item text with the box removed.
 (define (render-checkbox checkbox)
   "Return a list holding an SXML checkbox input for @var{checkbox}, or '().
 @var{checkbox} is the value produced by @code{split-checkbox}."
@@ -301,56 +287,17 @@ is not a checkbox item."
 
       (_ #f)))
 
-  ;; Ensure we are mapping over a list of nodes, even if PEG returned a single node
-  (let ((nodes (cond
-                 ((string? ast)
-                  (list ast))
-                 ((and (pair? ast)
-                       (symbol? (car ast)))
-                  (list ast))
-                 (else ast))))
-    (filter-map (lambda (node)
-                  (let ((res (render node)))
-                    (if (equal? res "") #f res))) nodes)))
+  ;; Whatever shape the parse came in, we map over a list of nodes.
+  (filter-map (lambda (node)
+                (let ((res (render node)))
+                  (if (equal? res "") #f res)))
+              (inline-nodes ast)))
 
 (define (inline-org->html ast)
   "Convert an inline Org AST into an HTML string."
   (sxml->html-string (inline-org->sxml ast)))
 
 ;;; List Rendering Helpers
-
-(define (list-item-kind item)
-  "Return the kind of a list @var{item}: @code{unordered}, @code{ordered},
-@code{description} or @code{other}."
-  (match item
-    (((quote unordered-item) . _) 'unordered)
-    (((quote ordered-item) . _) 'ordered)
-    (((quote desc-item) . _) 'description)
-    (_ 'other)))
-
-(define (group-list-items items)
-  "Group consecutive @var{items} of the same kind into @code{(kind . items)}
-runs, preserving their original order.  Org lists may mix unordered, ordered
-and description items, so each run becomes its own list element."
-  (let loop
-    ((items items)
-     (kind #f)
-     (acc '())
-     (groups '()))
-    (cond
-      ((null? items)
-       (reverse (if (null? acc) groups
-                    (cons (cons kind
-                                (reverse acc)) groups))))
-      ((eq? (list-item-kind (car items)) kind)
-       (loop (cdr items) kind
-             (cons (car items) acc) groups))
-      (else (loop (cdr items)
-                  (list-item-kind (car items))
-                  (list (car items))
-                  (if (null? acc) groups
-                      (cons (cons kind
-                                  (reverse acc)) groups)))))))
 
 (define (render-nested-lists sub-nodes)
   "Render the @var{sub-nodes} of a list item, expanding nested lists of any
@@ -361,25 +308,17 @@ kind into list elements of their own."
                    (render-list items))
                   (_ (org-ast->sxml node)))) sub-nodes))
 
-(define (render-unordered-item item)
+(define (render-list-item item classes)
+  "Render one list @var{item}, unordered or ordered, as an `li'.
+@var{classes} is the parameter that holds the classes for this kind of item."
   (match item
-    (('unordered-item ('line-content text) sub ...)
+    (((or 'unordered-item
+          'ordered-item)
+      ('line-content text) sub ...)
      (let* ((checkbox (split-checkbox text))
             (body (if checkbox
                       (cdr checkbox) text)))
-       `(li ,@(make-sxml-attrs (unordered-list-item-classes))
-            ,@(render-checkbox checkbox)
-            ,@(inline-org->sxml (inline-org->ast body))
-            ,@(render-nested-lists sub))))
-    (_ #f)))
-
-(define (render-ordered-item item)
-  (match item
-    (('ordered-item ('line-content text) sub ...)
-     (let* ((checkbox (split-checkbox text))
-            (body (if checkbox
-                      (cdr checkbox) text)))
-       `(li ,@(make-sxml-attrs (ordered-list-item-classes))
+       `(li ,@(make-sxml-attrs (classes))
             ,@(render-checkbox checkbox)
             ,@(inline-org->sxml (inline-org->ast body))
             ,@(render-nested-lists sub))))
@@ -402,11 +341,15 @@ kind into list elements of their own."
     ((eq? kind
           'unordered)
      `(ul ,@(make-sxml-attrs (unordered-list-classes))
-          ,@(filter-map render-unordered-item items)))
+          ,@(filter-map (lambda (item)
+                          (render-list-item item unordered-list-item-classes))
+                        items)))
     ((eq? kind
           'ordered)
      `(ol ,@(make-sxml-attrs (ordered-list-classes))
-          ,@(filter-map render-ordered-item items)))
+          ,@(filter-map (lambda (item)
+                          (render-list-item item ordered-list-item-classes))
+                        items)))
     ((eq? kind
           'description)
      `(dl ,@(make-sxml-attrs (description-list-classes))
@@ -422,98 +365,50 @@ kind into list elements of their own."
 
 ;;; Block Org AST -> SXML Transformation
 
+(define (render-heading stars children)
+  "Render a heading with @var{stars} and @var{children} to SXML.
+The heading level is the number of stars, which is the number of the `h'
+element as well; the TODO keyword, the priority, the title and the tags are the
+parts @code{heading-parts} reads out of @var{children}."
+  (let* ((parts (heading-parts children))
+         (todo (list-ref parts 0))
+         (priority (list-ref parts 1))
+         (tags (list-ref parts 2))
+         (text (or (list-ref parts 3) ""))
+         (level (string-length stars))
+         (tag (string->symbol (format #f "h~a" level)))
+         (classes (append ((heading-classes)
+                           level)
+                          (if todo
+                              (list "org-todo"
+                                    (format #f "org-todo-~a"
+                                            (string-downcase todo)))
+                              '()))))
+    `(,tag ,@(make-sxml-attrs classes
+                              (heading-id text))
+      ,@(if todo
+            (list `(span ,@(make-sxml-attrs '("org-todo"))
+                         ,todo))
+            '())
+      ,@(if priority
+            (list `(span ,@(make-sxml-attrs '("org-priority"))
+                         ,(format #f "[#~a]" priority)))
+            '())
+      ,@(inline-org->sxml (inline-org->ast text))
+      ,@(if (null? tags)
+            '()
+            (list `(span ,@(make-sxml-attrs '("org-tags"))
+                         ,@(map (lambda (name)
+                                  `(span ,@(make-sxml-attrs '("org-tag"))
+                                         ,name)) tags)))))))
+
 (define (org-ast->sxml ast)
   "Convert a document Org AST into a list of SXML block nodes."
   (define (render node)
     (match node
-      
       ;; Headings
-      (((quote heading) (? string? s) . children) (let* ((lvl (string-length s))
-                                                         (tag (string->symbol (format
-                                                                               #f
-                                                                               "h~a"
-                                                                               lvl)))
-                                                         (todo (any (lambda (c)
-                                                                      (match c
-                                                                        (('heading-todo
-                                                                          x)
-                                                                         x)
-                                                                        (_ #f)))
-                                                                    children))
-                                                         (priority (any (lambda 
-                                                                                (c)
-                                                                          (match c
-                                                                            (('heading-priority
-                                                                              x)
-                                                                             x)
-                                                                            (_
-                                                                             #f)))
-                                                                    children))
-                                                         (tags (append-map (lambda 
-                                                                                   (c)
-                                                                             (match c
-                                                                               
-                                                                               
-                                                                               (
-                                                                                ('heading-tags
-                                                                                 xs
-                                                                                 ...)
-                                                                                xs)
-
-                                                                               
-                                                                               (_ '())))
-                                                                children))
-                                                         (text (any (lambda (c)
-                                                                      (match c
-                                                                        (('line-content
-                                                                          x)
-                                                                         x)
-                                                                        (_ #f)))
-                                                                    children))
-                                                         (classes (append ((heading-classes)
-                                                                           lvl)
-                                                                          (if
-                                                                           todo
-                                                                           (list
-                                                                            "org-todo"
-                                                                            (format
-                                                                             #f
-                                                                             "org-todo-~a"
-                                                                             (string-downcase
-                                                                              todo)))
-                                                                           '()))))
-                                                    `(,tag ,@(make-sxml-attrs
-                                                              classes
-                                                              (heading-id text))
-                                                      ,@(if todo
-                                                            (list `(span ,@(make-sxml-attrs '
-                                                                            ("org-todo"))
-                                                                         ,todo))
-                                                            '())
-                                                      ,@(if priority
-                                                            (list `(span ,@(make-sxml-attrs '
-                                                                            ("org-priority"))
-                                                                         ,(format
-                                                                           #f
-                                                                           "[#~a]"
-                                                                           priority)))
-                                                            '())
-                                                      ,@(inline-org->sxml (inline-org->ast
-                                                                           (or
-                                                                            text
-                                                                            "")))
-                                                      ,@(if (null? tags)
-                                                            '()
-                                                            (list `(span ,@(make-sxml-attrs '
-                                                                            ("org-tags"))
-                                                                         ,@(map (lambda 
-                                                                                        (t)
-                                                                                  `
-                                                                                  (span ,@
-                                                                                   (make-sxml-attrs '
-                                                                                    ("org-tag"))
-                                                                                   ,t))
-                                                                            tags)))))))
+      (((quote heading) (? string? stars) . children) (render-heading stars
+                                                       children))
 
       ;; Horizontal Separator
       (('separator sep-content)
@@ -535,23 +430,21 @@ kind into list elements of their own."
       ;; as Org does it, so a `[[fig:arch]]' link -- which the link classifier
       ;; already turns into the fragment `#fig:arch' -- lands on the figure.
       (('figure _ ...)
-       (let* ((parts (figure-parts node))
-              (name (list-ref parts 0))
-              (caption (list-ref parts 1))
-              (target (list-ref parts 2))
-              (description (list-ref parts 3)))
-         `(figure ,@(make-sxml-attrs (figure-classes)
-                                     (if name
-                                         `((id ,name))
-                                         '()))
-                  (img ,@(make-sxml-attrs (image-classes)
-                                          `((src ,(org-link-href target))
-                                            (alt ,(or description caption
-                                                      (org-link-display target))))))
-                  ,@(if caption
-                        (list `(figcaption ,@(make-sxml-attrs (figure-caption-classes))
-                                           ,caption))
-                        '()))))
+       (match (figure-parts node)
+         ((name caption target description)
+          `(figure ,@(make-sxml-attrs (figure-classes)
+                                      (if name
+                                          `((id ,name))
+                                          '()))
+                   (img ,@(make-sxml-attrs (image-classes)
+                                           `((src ,(org-link-href target))
+                                             (alt ,(or description caption
+                                                       (org-link-display
+                                                        target))))))
+                   ,@(if caption
+                         (list `(figcaption ,@(make-sxml-attrs (figure-caption-classes))
+                                            ,caption))
+                         '())))))
 
       ;; A named element: `#+NAME:' above an element is its id, exactly as it is
       ;; for a figure, so a `[[tbl:data]]' link -- which the link classifier
@@ -559,29 +452,19 @@ kind into list elements of their own."
       ;; itself.  Elements that are not their own HTML element, a comment being
       ;; the one that matters, get an anchor of their own to carry the id.
       (('named _ ...)
-       (let* ((parts (named-parts node))
-              (name (list-ref parts 0))
-              (inner (list-ref parts 1))
-              (rendered (render inner))
-              (nodes (cond
-                       ((not rendered)
-                        '())
-                       ((and (pair? rendered)
-                             (symbol? (car rendered)))
-                        (list rendered))
-                       ((list? rendered)
-                        rendered)
-                       (else (list rendered)))))
-         (let ((tag (and (pair? nodes)
-                         (pair? (car nodes))
-                         (car (car nodes)))))
-           (if (and tag
-                    (not (eq? tag
-                              'raw-html)))
-               (cons (add-sxml-id (car nodes) name)
-                     (cdr nodes))
-               (cons `(a ,@(make-sxml-attrs '()
-                                            (list (list 'id name)))) nodes)))))
+       (match (named-parts node)
+         ((name inner)
+          (let* ((nodes (inline-nodes (render inner)))
+                 (tag (and (pair? nodes)
+                           (pair? (car nodes))
+                           (car (car nodes)))))
+            (if (and tag
+                     (not (eq? tag
+                               'raw-html)))
+                (cons (add-sxml-id (car nodes) name)
+                      (cdr nodes))
+                (cons `(a ,@(make-sxml-attrs '()
+                                             (list (list 'id name)))) nodes))))))
 
       ;; In-buffer keyword / metadata, e.g. #+TITLE: Hello
       (('keyword ('keyword-key key)
@@ -692,27 +575,12 @@ kind into list elements of their own."
   ;; The document's own `#+NAME:' targets are in scope while it renders, so a
   ;; bare `[[name]]' link is parsed as the cross-reference it is.
   (parameterize ((element-names (document-names ast)))
-    (let ((nodes (cond
-                   ((string? ast)
-                    (list ast))
-                   ((and (pair? ast)
-                         (symbol? (car ast)))
-                    (list ast))
-                   (else ast))))
-      ;; A single node may render to several sibling nodes (a mixed list renders
-      ;; to one or more list elements, a description item to a <dt>/<dd> pair),
-      ;; so the results are spliced rather than collected.
-      (append-map (lambda (node)
-                    (let ((res (render node)))
-                      (cond
-                        ((not res)
-                         '())
-                        ((and (pair? res)
-                              (symbol? (car res)))
-                         (list res))
-                        ((list? res)
-                         res)
-                        (else (list res))))) nodes))))
+    ;; A single node may render to several sibling nodes (a mixed list renders
+    ;; to one or more list elements, a description item to a <dt>/<dd> pair),
+    ;; so the results are spliced rather than collected.
+    (append-map (lambda (node)
+                  (inline-nodes (render node)))
+                (inline-nodes ast))))
 
 (define (org-ast->html ast)
   "Convert a document Org AST into an HTML string."

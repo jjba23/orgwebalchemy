@@ -406,8 +406,11 @@
                              #:got (car (nodes (string-append "#+CAPTION: c\n"
                                                 "[[https://example.org/a.png]]\n")))))
          (test "an empty name is no name"
+               ;; The value of an empty `#+NAME:' is the empty string, not the
+               ;; bare tag symbol an empty match used to leave behind; either
+               ;; way there is no name here, so the image stays an image.
                (assert-equal #:expect '(keyword (keyword-key "NAME")
-                                                keyword-value)
+                                                (keyword-value ""))
                              #:got (car (nodes "#+NAME:\n[[file:a.png]]\n"))))
          (test "a figure keeps its place among the paragraphs around it"
                (assert-equal #:expect '((paragraph (line-content "before"))
@@ -585,10 +588,44 @@
                              #:got (car (nodes "| a\rb |\n")))
                (assert-equal #:expect '(paragraph (line-content "a"))
                              #:got (car (nodes "a\nb\n"))))
-         (test "a table row needs no trailing newline"
-               (assert-equal #:expect '(table (table-row (table-cell " a ")
-                                                         table-cell))
-                             #:got (car (nodes "| a |"))))
+         (test
+          "a table row needs no trailing newline, and gains no extra cell"
+          ;; The closing bar of a row that ends the input used to be read as
+          ;; though one more empty cell followed it, so `| a |' was a row of
+          ;; two cells while `| a |\n' was a row of one.
+          (assert-equal #:expect '(table (table-row (table-cell " a ")))
+                        #:got (car (nodes "| a |")))
+          (assert-equal #:expect '(table (table-row (table-cell " a ")
+                                                    (table-cell " b ")))
+                        #:got (car (nodes "| a | b |"))))
+         (test
+          "a table line that is only its closing bar holds one empty cell"
+          ;; Org reads `|' as a row of one empty field.  The bar a cell is
+          ;; written after is the one the test for a row end cannot see,
+          ;; because a row has to open with a bar.
+          (assert-equal #:expect '(table (table-row (table-cell "")))
+                        #:got (car (nodes "|\n")))
+          (assert-equal #:expect '(table (table-row (table-cell "")))
+                        #:got (car (nodes "||\n")))
+          (assert-equal #:expect '(table (table-row (table-cell " a ")
+                                                    (table-cell "")))
+                        #:got (car (nodes "| a ||\n"))))
+         (test "an empty value is text, not a gap in the tree"
+               ;; A pattern that accumulates `all' turns an empty match into a
+               ;; bare tag symbol, which is how an empty cell used to lose its
+               ;; column and a block written without a language used to vanish.
+               (assert-equal #:expect '(table (table-row (table-cell "a")
+                                                         (table-cell "")
+                                                         (table-cell "b")))
+                             #:got (car (nodes "|a||b|\n")))
+               (assert-equal #:expect '(src-block (lang "")
+                                                  (src-content "(x)\n"))
+                             #:got (car (nodes "#+BEGIN_SRC\n(x)\n#+END_SRC\n")))
+               (assert-equal #:expect '(keyword (keyword-key "KEY")
+                                                (keyword-value ""))
+                             #:got (car (nodes "#+KEY:\n")))
+               (assert-equal #:expect '(quote-block (quote-content ""))
+                             #:got (car (nodes "#+BEGIN_QUOTE\n#+END_QUOTE\n"))))
          (test "the last line of a document without a newline parses"
                (assert-equal #:expect '(paragraph (line-content "text"))
                              #:got (org->ast "text")))))

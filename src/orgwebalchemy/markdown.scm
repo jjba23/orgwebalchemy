@@ -18,7 +18,6 @@
 (define-module (orgwebalchemy markdown)
   #:declarative? #t
   #:use-module (ice-9 match)
-  #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
   #:use-module (orgwebalchemy peg)
   #:export (org->markdown org-ast->markdown inline-org->markdown))
@@ -27,68 +26,18 @@
 ;; Helpers
 ;; =======================================================================
 
-(define (trim-whitespace str)
-  "Return @var{str} without leading or trailing spaces and tabs."
-  (let ((n (string-length str)))
-    (let skip-leading
-      ((i 0))
-      (if (and (< i n)
-               (or (char=? (string-ref str i) #\space)
-                   (char=? (string-ref str i) #\tab)))
-          (skip-leading (+ i 1))
-          (let skip-trailing
-            ((j n))
-            (if (and (> j i)
-                     (or (char=? (string-ref str
-                                             (- j 1)) #\space)
-                         (char=? (string-ref str
-                                             (- j 1)) #\tab)))
-                (skip-trailing (- j 1))
-                (substring str i j)))))))
-
 (define (prefix-lines prefix text)
-  "Return @var{text} with @var{prefix} added in front of every non-empty line."
+  "Return @var{text} with @var{prefix} added in front of every line."
   (let ((lines (string-split (string-trim-right text
                                                 (lambda (c)
                                                   (char=? c #\newline)))
                              #\newline)))
     (string-join (map (lambda (line)
-                        (if (string-null? line) prefix
-                            (string-append prefix line))) lines) "\n")))
-
-(define (indent-lines indent text)
-  "Return @var{text} with @var{indent} added in front of every line."
-  (let ((lines (string-split (string-trim-right text
-                                                (lambda (c)
-                                                  (char=? c #\newline)))
-                             #\newline)))
-    (string-join (map (lambda (line)
-                        (string-append indent line)) lines) "\n")))
-
-(define (split-checkbox text)
-  "Return @code{(state . rest)} when @var{text} starts with an Org checkbox.
-@var{state} is @code{#t} for a checked box and @code{#f} otherwise."
-  (match (string-match "^\\[([ xX])\\][[:space:]]+" text)
-    (#f #f)
-    (m (cons (let ((c (match:substring m 1)))
-               (or (string=? c "x")
-                   (string=? c "X")))
-             (substring text
-                        (match:end m 0))))))
+                        (string-append prefix line)) lines) "\n")))
 
 ;; =======================================================================
 ;; Inline Org AST -> Markdown
 ;; =======================================================================
-
-(define (inline-nodes ast)
-  "Normalise @var{ast} into a list of inline nodes."
-  (cond
-    ((string? ast)
-     (list ast))
-    ((and (pair? ast)
-          (symbol? (car ast)))
-     (list ast))
-    (else ast)))
 
 (define (inline-render-token token)
   "Render a token that may itself contain nested inline Org markup."
@@ -194,30 +143,6 @@
 ;; Block Org AST -> Markdown
 ;; =======================================================================
 
-(define (heading-parts children)
-  "Extract @code{(todo priority tags text)} from a heading's @var{children}."
-  (let ((todo (any (lambda (c)
-                     (match c
-                       (('heading-todo x)
-                        x)
-                       (_ #f))) children))
-        (priority (any (lambda (c)
-                         (match c
-                           (('heading-priority x)
-                            x)
-                           (_ #f))) children))
-        (tags (append-map (lambda (c)
-                            (match c
-                              (('heading-tags xs ...)
-                               xs)
-                              (_ '()))) children))
-        (text (any (lambda (c)
-                     (match c
-                       (('line-content x)
-                        x)
-                       (_ #f))) children)))
-    (list todo priority tags text)))
-
 (define (render-heading stars children)
   "Render a heading with @var{stars} and @var{children} to Markdown."
   (let* ((parts (heading-parts children))
@@ -256,7 +181,11 @@
     (_ '())))
 
 (define (render-table rows)
-  "Render Org table @var{rows} as a GitHub-flavoured Markdown table."
+  "Render Org table @var{rows} as a GitHub-flavoured Markdown table.
+The columns are the ones the header row has -- the row Org marks as a header,
+or the first row when it marks none -- and every row is then written as it is,
+however many cells it holds.  A table without a single cell renders as
+nothing."
   (let* ((header (find (lambda (r)
                          (match r
                            (((quote table-header-row) . _) #t)
@@ -270,8 +199,11 @@
                          ((null? body)
                           '())
                          (else (row-cells (car body)))))
-         (body-rows (if header body
-                        (cdr body))))
+         (body-rows (cond
+                      (header body)
+                      ((null? body)
+                       '())
+                      (else (cdr body)))))
     (if (null? header-cells) ""
         (string-append "| "
                        (string-join header-cells " | ")
@@ -289,46 +221,15 @@
                                     "")
                        "\n"))))
 
-(define (checkbox-marker checkbox)
-  "Return the Markdown list marker prefix for @var{checkbox}."
+(define (checkbox-marker checkbox prefix)
+  "Return the markdown list @var{prefix} with the marker for @var{checkbox}.
+@var{checkbox} is @code{#f} for an item that is not a checkbox at all."
   (cond
     ((not checkbox)
-     "- ")
+     prefix)
     ((car checkbox)
-     "- [x] ")
-    (else "- [ ] ")))
-
-(define (list-item-kind item)
-  "Return the kind of a list @var{item}: @code{unordered}, @code{ordered},
-@code{description} or @code{other}."
-  (match item
-    (((quote unordered-item) . _) 'unordered)
-    (((quote ordered-item) . _) 'ordered)
-    (((quote desc-item) . _) 'description)
-    (_ 'other)))
-
-(define (group-list-items items)
-  "Group consecutive @var{items} of the same kind into @code{(kind . items)}
-runs, preserving their original order."
-  (let loop
-    ((items items)
-     (kind #f)
-     (acc '())
-     (groups '()))
-    (cond
-      ((null? items)
-       (reverse (if (null? acc) groups
-                    (cons (cons kind
-                                (reverse acc)) groups))))
-      ((eq? (list-item-kind (car items)) kind)
-       (loop (cdr items) kind
-             (cons (car items) acc) groups))
-      (else (loop (cdr items)
-                  (list-item-kind (car items))
-                  (list (car items))
-                  (if (null? acc) groups
-                      (cons (cons kind
-                                  (reverse acc)) groups)))))))
+     (string-append prefix "[x] "))
+    (else (string-append prefix "[ ] "))))
 
 (define (render-list-markdown items indent)
   "Render a list's @var{items} at @var{indent}, starting a new Markdown list
@@ -366,7 +267,7 @@ whenever the item kind changes."
                                 (body (if checkbox
                                           (cdr checkbox) text)))
                            (string-append indent
-                                          (checkbox-marker checkbox)
+                                          (checkbox-marker checkbox "- ")
                                           (inline-org->markdown (inline-org->ast
                                                                  body)) "\n"
                                           (render-nested sub
@@ -381,20 +282,13 @@ whenever the item kind changes."
                         (('ordered-item ('line-content text) sub ...)
                          (let* ((checkbox (split-checkbox text))
                                 (body (if checkbox
-                                          (cdr checkbox) text))
-                                (marker (cond
-                                          ((not checkbox)
-                                           "")
-                                          ((car checkbox)
-                                           "[x] ")
-                                          (else "[ ] "))))
+                                          (cdr checkbox) text)))
                            (string-append indent
-                                          (format #f "~a. "
-                                                  (+ i 1))
-                                          marker
+                                          (checkbox-marker checkbox
+                                                           (format #f "~a. "
+                                                                   (+ i 1)))
                                           (inline-org->markdown (inline-org->ast
-                                                                 body))
-                                          "\n"
+                                                                 body)) "\n"
                                           (render-nested sub
                                                          (string-append indent
                                                           "   ")))))
@@ -442,29 +336,25 @@ whenever the item kind changes."
     ;; anchor -- the one thing a `[[fig:arch]]' link needs to resolve -- and the
     ;; caption an emphasised line under the image.
     (('figure _ ...)
-     (let* ((parts (figure-parts node))
-            (name (list-ref parts 0))
-            (caption (list-ref parts 1))
-            (target (list-ref parts 2))
-            (description (list-ref parts 3)))
-       (string-append (if name
-                          (format #f "<a id=\"~a\"></a>\n\n" name) "")
-                      (format #f "![~a](~a)\n\n"
-                              (or description caption
-                                  (org-link-display target))
-                              (org-link-href target))
-                      (if caption
-                          (format #f "*~a*\n\n" caption) ""))))
+     (match (figure-parts node)
+       ((name caption target description)
+        (string-append (if name
+                           (format #f "<a id=\"~a\"></a>\n\n" name) "")
+                       (format #f "![~a](~a)\n\n"
+                               (or description caption
+                                   (org-link-display target))
+                               (org-link-href target))
+                       (if caption
+                           (format #f "*~a*\n\n" caption) "")))))
 
     ;; A named element: Markdown has no id on most of these elements, so the
     ;; name becomes an explicit anchor -- the thing a `[[tbl:data]]' or
     ;; `[[name]]' link needs to resolve -- and the element follows it.
     (('named _ ...)
-     (let* ((parts (named-parts node))
-            (name (list-ref parts 0))
-            (inner (list-ref parts 1)))
-       (string-append (format #f "<a id=\"~a\"></a>\n\n" name)
-                      (or (render-block inner) ""))))
+     (match (named-parts node)
+       ((name inner)
+        (string-append (format #f "<a id=\"~a\"></a>\n\n" name)
+                       (or (render-block inner) "")))))
 
     ;; Source block
     (('src-block ('lang l)
@@ -517,7 +407,7 @@ whenever the item kind changes."
 
     ;; Fixed width
     (('fixed-width ('fixed-width-content text))
-     (string-append (indent-lines "    " text) "\n\n"))
+     (string-append (prefix-lines "    " text) "\n\n"))
 
     ;; Lists, which may mix item kinds and nest lists of a different kind.
     (('org-list items ...)
