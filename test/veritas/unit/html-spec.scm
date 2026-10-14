@@ -417,27 +417,32 @@
 (define extended-inline-suite
   (suite "Extended inline markup"
          (test "strikethrough, superscript and subscript"
-               (assert-equal #:got (inline-org->html (inline-org->ast "+struck+"))
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "+struck+"))
                              #:expect "<del>struck</del>")
                (assert-equal #:got (inline-org->html (inline-org->ast "x^{2}"))
                              #:expect "x<sup>2</sup>")
                (assert-equal #:got (inline-org->html (inline-org->ast "H_{2}O"))
                              #:expect "H<sub>2</sub>O"))
          (test "forced line break and escaped markup"
-               (assert-equal #:got (inline-org->html (inline-org->ast "line\\\\"))
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "line\\\\"))
                              #:expect "line<br />")
                (assert-equal #:got (inline-org->html (inline-org->ast "\\+"))
                              #:expect "+"))
          (test "footnote reference, definition and inline form"
-               (assert-equal #:got (inline-org->html (inline-org->ast "see[fn:1]"))
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "see[fn:1]"))
                 #:expect
                 "see<sup class=\"footnote-ref\"><a href=\"#fn-1\" id=\"fnref-1\">1</a></sup>")
-               (assert-equal #:got (inline-org->html (inline-org->ast "[fn:1: note]"))
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "[fn:1: note]"))
                 #:expect
                 "<span class=\"footnote-def\" id=\"fn-1\"><sup class=\"footnote-label\">1</sup> note</span>")
-               (assert-equal #:got (inline-org->html (inline-org->ast "[fn::note]"))
-                #:expect
-                "<sup class=\"footnote-inline\">note</sup>"))))
+               (assert-equal #:got (inline-org->html (inline-org->ast
+                                                      "[fn::note]"))
+                             #:expect
+                             "<sup class=\"footnote-inline\">note</sup>"))))
 
 (define extended-block-suite
   (suite "Extended block elements"
@@ -447,16 +452,16 @@
                (assert-equal #:got (org->html "# a comment\n")
                              #:expect "<!-- a comment -->")
                (assert-equal #:got (org->html
-                                    "#+BEGIN_COMMENT\nhidden\n#+END_COMMENT\n")
+                                              "#+BEGIN_COMMENT\nhidden\n#+END_COMMENT\n")
                              #:expect "<!-- hidden\n-->"))
          (test "fixed-width, verse and center blocks"
                (assert-equal #:got (org->html ": fixed\n")
                              #:expect "<pre>fixed\n</pre>")
                (assert-equal #:got (org->html
-                                    "#+BEGIN_VERSE\none\ntwo\n#+END_VERSE\n")
+                                              "#+BEGIN_VERSE\none\ntwo\n#+END_VERSE\n")
                              #:expect "<p>one<br />two</p>")
                (assert-equal #:got (org->html
-                                    "#+BEGIN_CENTER\nmid\n#+END_CENTER\n")
+                                              "#+BEGIN_CENTER\nmid\n#+END_CENTER\n")
                              #:expect "<div><p>mid</p></div>"))
          (test "checkbox list items"
                (assert-equal #:got (org->html "- [ ] todo\n- [X] done\n")
@@ -466,12 +471,31 @@
 (define heading-metadata-suite
   (suite "Heading metadata"
          (test "TODO keyword, priority and tags render"
-               (assert-equal #:got (org->html "* TODO [#A] A Task :work:urgent:\n")
+               (assert-equal #:got (org->html
+                                    "* TODO [#A] A Task :work:urgent:\n")
                 #:expect
                 "<h1 class=\"org-todo org-todo-todo\"><span class=\"org-todo\">TODO</span><span class=\"org-priority\">[#A]</span>A Task<span class=\"org-tags\"><span class=\"org-tag\">work</span><span class=\"org-tag\">urgent</span></span></h1>"))
          (test "plain headings are unchanged"
                (assert-equal #:got (org->html "* Plain\n")
                              #:expect "<h1>Plain</h1>"))))
+
+(define mixed-list-suite
+  (suite "Mixed and nested list types"
+         (test "consecutive kinds become separate list elements"
+               (assert-equal #:got (org->html "- u\n1) o\n- k :: v\n")
+                #:expect
+                "<ul><li>u</li></ul><ol><li>o</li></ol><dl><dt>k</dt><dd>v</dd></dl>"))
+         (test "an ordered list nests under an unordered item"
+               (assert-equal #:got (org->html "- outer\n  1. n1\n  2. n2\n")
+                #:expect
+                "<ul><li>outer<ol><li>n1</li><li>n2</li></ol></li></ul>"))
+         (test "a nested list may mix item kinds"
+               (assert-equal #:got (org->html "- a\n  - b\n  1. c\n  - d\n")
+                #:expect
+                "<ul><li>a<ul><li>b</li></ul><ol><li>c</li></ol><ul><li>d</li></ul></li></ul>"))
+         (test "a description list nests under an unordered item"
+               (assert-equal #:got (org->html "- term\n  - k :: v\n")
+                #:expect "<ul><li>term<dl><dt>k</dt><dd>v</dd></dl></li></ul>"))))
 
 (define feature-fixture-suite
   (suite "Feature fixture"
@@ -495,6 +519,7 @@
                org-to-html-suite
                inline-url-suite
                list-to-html-suite
+               mixed-list-suite
                extended-inline-suite
                extended-block-suite
                heading-metadata-suite

@@ -24,6 +24,11 @@ footnote reference[fn:one] and an inline footnote[fn::like this].
 
 - Term :: Definition
 
+- outer
+  1. nested ordered
+  2. another
+- Tail :: detail
+
 * Blocks
 #+BEGIN_SRC scheme
 (display "hi")

@@ -27,7 +27,8 @@
 ;; =======================================================================
 
 (define (slurp path)
-  (call-with-input-file path read-string))
+  (call-with-input-file path
+    read-string))
 
 (define sample-org-features
   (slurp "test/fixtures/sample-org-features.org"))
@@ -35,7 +36,9 @@
 (define (nodes str)
   "Return the top-level AST of @var{str} as a list, even for a single element."
   (let ((ast (org->ast str)))
-    (if (and (pair? ast) (symbol? (car ast))) (list ast) ast)))
+    (if (and (pair? ast)
+             (symbol? (car ast)))
+        (list ast) ast)))
 
 ;; =======================================================================
 ;; Test Suites
@@ -50,20 +53,27 @@
                ("paragraph" "Just some text\n" paragraph)
                ("keyword" "#+TITLE: Hi\n" keyword)
                ("comment" "# a note\n" comment-line)
-               ("comment block" "#+BEGIN_COMMENT\nc\n#+END_COMMENT\n" comment-block)
+               ("comment block" "#+BEGIN_COMMENT\nc\n#+END_COMMENT\n"
+                comment-block)
                ("fixed width" ": code\n" fixed-width)
                ("src block" "#+BEGIN_SRC scheme\n(x)\n#+END_SRC\n" src-block)
                ("quote block" "#+BEGIN_QUOTE\nq\n#+END_QUOTE\n" quote-block)
                ("verse block" "#+BEGIN_VERSE\nv\n#+END_VERSE\n" verse-block)
-               ("center block" "#+BEGIN_CENTER\nc\n#+END_CENTER\n" center-block)
-               ("example block" "#+BEGIN_EXAMPLE\ne\n#+END_EXAMPLE\n" example-block)
-               ("export html" "#+BEGIN_EXPORT html\n<div></div>\n#+END_EXPORT\n" export-html-block)
+               ("center block" "#+BEGIN_CENTER\nc\n#+END_CENTER\n"
+                center-block)
+               ("example block" "#+BEGIN_EXAMPLE\ne\n#+END_EXAMPLE\n"
+                example-block)
+               ("export html" "#+BEGIN_EXPORT html
+<div></div>
+#+END_EXPORT
+" export-html-block)
                ("table" "| a | b |\n|---+---|\n| 1 | 2 |\n" table)
-               ("unordered list" "- a\n" unordered-list)
-               ("ordered list" "1) a\n" ordered-list)
-               ("description list" "- k :: v\n" description-list)
+               ("unordered list" "- a\n" org-list)
+               ("ordered list" "1) a\n" org-list)
+               ("description list" "- k :: v\n" org-list)
+               ("mixed sibling list" "- a\n1) b\n- k :: v\n" org-list)
                ("separator" "-----\n" separator))
-             (lambda (case)
+             (lambda (case )
                (let ((description (list-ref case 0))
                      (input (list-ref case 1))
                      (expected (list-ref case 2)))
@@ -87,10 +97,12 @@
                                                 (line-content "Done"))
                              #:got (car (nodes "* DONE Done\n"))))
          (test "a plain heading keeps its simple shape"
-               (assert-equal #:expect '(heading "**" (line-content "Title"))
+               (assert-equal #:expect '(heading "**"
+                                                (line-content "Title"))
                              #:got (car (nodes "** Title\n"))))
          (test "a title ending in a colon is not mistaken for tags"
-               (assert-equal #:expect '(heading "*" (line-content "Note:"))
+               (assert-equal #:expect '(heading "*"
+                                                (line-content "Note:"))
                              #:got (car (nodes "* Note:\n"))))))
 
 (define inline-tokens-suite
@@ -101,8 +113,9 @@
                ("=verbatim=" (inline-verbatim-content "verbatim"))
                ("_underline_" (inline-underline-content "underline"))
                ("+strike+" (inline-strike-content "strike")))
-             (lambda (case)
-               (test (format #f "~a parses" (car case))
+             (lambda (case )
+               (test (format #f "~a parses"
+                             (car case))
                      (assert-equal #:expect (cadr case)
                                    #:got (inline-org->ast (car case)))))))
 
@@ -125,45 +138,116 @@
                (assert-equal #:expect '(inline-line-break "\\\\")
                              #:got (inline-org->ast "\\\\")))
          (test "links with and without a description"
-               (assert-equal #:expect '(inline-link-with-desc
-                                        (link-target-content "u")
-                                        (link-description-content "d"))
+               (assert-equal #:expect '(inline-link-with-desc (link-target-content
+                                                               "u")
+                                                              (link-description-content
+                                                               "d"))
                              #:got (inline-org->ast "[[u][d]]"))
-               (assert-equal #:expect '(inline-link-no-desc
-                                        (link-target-content "u"))
+               (assert-equal #:expect '(inline-link-no-desc (link-target-content
+                                                             "u"))
                              #:got (inline-org->ast "[[u]]")))
          (test "raw urls carry their scheme"
                (assert-equal #:expect '(inline-raw-url (url-scheme "https://")
                                                        "x.org")
                              #:got (inline-org->ast "https://x.org")))
          (test "footnote reference, definition and inline form"
-               (assert-equal #:expect '(inline-footnote-ref
-                                        (footnote-label "1"))
+               (assert-equal #:expect '(inline-footnote-ref (footnote-label
+                                                             "1"))
                              #:got (inline-org->ast "[fn:1]"))
-               (assert-equal #:expect '(inline-footnote-def
-                                        (footnote-label "1")
-                                        (footnote-content " note"))
+               (assert-equal #:expect '(inline-footnote-def (footnote-label
+                                                             "1")
+                                                            (footnote-content
+                                                             " note"))
                              #:got (inline-org->ast "[fn:1: note]"))
-               (assert-equal #:expect '(inline-footnote-inline
-                                        (footnote-content "note"))
+               (assert-equal #:expect '(inline-footnote-inline (footnote-content
+                                                                "note"))
                              #:got (inline-org->ast "[fn::note]")))))
 
 (define whole-document-suite
   (suite "Whole-document parsing"
          (test "the feature fixture is parsed all the way to the end"
                (let ((ast (org->ast sample-org-features)))
-                 (assert-length #:expect 26 #:got ast)
+                 (assert-length #:expect 27
+                                #:got ast)
                  (assert-not-empty #:got ast)
-                 (assert-eq #:expect 'keyword #:got (car (car ast)))))
+                 (assert-eq #:expect 'keyword
+                            #:got (car (car ast)))))
          (test "the project's own README starts with a keyword and is long"
                (let ((ast (org->ast (slurp "README.org"))))
                  (assert-not-empty #:got ast)
-                 (assert-in-range #:min 100 #:max 10000 #:got (length ast))
-                 (assert-eq #:expect 'keyword #:got (car (car ast)))))))
+                 (assert-in-range #:min 100
+                                  #:max 10000
+                                  #:got (length ast))
+                 (assert-eq #:expect 'keyword
+                            #:got (car (car ast)))))))
+
+(define mixed-list-suite
+  (suite "Mixed and nested lists"
+         (test "a list keeps every kind of item in one run"
+               (assert-equal #:expect '(org-list (unordered-item (line-content
+                                                                  "u"))
+                                                 (ordered-item (line-content
+                                                                "o"))
+                                                 (desc-item (desc-key "k")
+                                                            (line-content "v")))
+                             #:got (car (nodes "- u\n1) o\n- k :: v\n"))))
+         (test "an ordered list nests under an unordered item"
+               (assert-equal #:expect '(org-list (unordered-item (line-content
+                                                                  "outer")
+                                                                 (nested-list (ordered-item
+                                                                               (line-content
+                                                                                "n1"))
+                                                                              
+                                                                              (ordered-item
+                                                                               (line-content
+                                                                                "n2")))))
+                             #:got (car (nodes "- outer\n  1. n1\n  2. n2\n"))))
+         (test "a nested list may mix item kinds"
+               (assert-equal #:expect '(org-list (unordered-item (line-content
+                                                                  "a")
+                                                                 (nested-list (unordered-item
+                                                                               (line-content
+                                                                                "b"))
+                                                                              
+                                                                              (ordered-item
+                                                                               (line-content
+                                                                                "c"))
+                                                                              
+                                                                              (unordered-item
+                                                                               (line-content
+                                                                                "d")))))
+                             #:got (car (nodes "- a\n  - b\n  1. c\n  - d\n"))))
+         (test "a description list nests under an unordered item"
+               (assert-equal #:expect '(org-list (unordered-item (line-content
+                                                                  "term")
+                                                                 (nested-list (desc-item
+                                                                               (desc-key
+                                                                                "k")
+                                                                               
+                                                                               (line-content
+                                                                                "v")))))
+                             #:got (car (nodes "- term\n  - k :: v\n"))))
+         (test "two levels of mixed nesting"
+               (assert-equal #:expect '(org-list (unordered-item (line-content
+                                                                  "a")
+                                                                 (nested-list (unordered-item
+                                                                               (line-content
+                                                                                "b")
+                                                                               
+                                                                               (nested-list
+                                                                                (ordered-item
+                                                                                 (line-content
+                                                                                  "c"))))
+                                                                              
+                                                                              (unordered-item
+                                                                               (line-content
+                                                                                "d")))))
+                             #:got (car (nodes "- a\n  - b\n    1. c\n  - d\n"))))))
 
 (define (spec)
   (veritas-run document-elements-suite
                heading-metadata-suite
                inline-tokens-suite
                inline-constructs-suite
+               mixed-list-suite
                whole-document-suite))

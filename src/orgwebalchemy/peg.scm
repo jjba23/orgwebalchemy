@@ -97,9 +97,7 @@
                         keyword
                         comment-line
                         fixed-width
-                        description-list
-                        unordered-list
-                        ordered-list
+                        org-list
                         paragraph))
 
 (define-peg-pattern empty-line none
@@ -197,12 +195,12 @@
 (define-list-item unordered-item list-bullet)
 (define-list-item ordered-item list-num)
 
-(define-peg-pattern description-list all
-                    (+ desc-item))
-(define-peg-pattern unordered-list all
-                    (+ unordered-item))
-(define-peg-pattern ordered-list all
-                    (+ ordered-item))
+;; A single `list' element may hold items of any kind, in any mix.  Org lets a
+;; list change its bullet type part-way through and lets a nested list use a
+;; different type from its parent, so one production covers all of them and the
+;; renderers group consecutive items into the right HTML/Markdown list.
+(define-peg-pattern org-list all
+                    (+ (or desc-item unordered-item ordered-item)))
 
 ;; =====================================================================
 ;; Fixed-Format / Export Blocks
@@ -275,8 +273,10 @@
 ;; =====================================================================
 
 ;; Whitespace patterns that leave no trace in the AST.
-(define-peg-pattern lead-ws none (* ws))
-(define-peg-pattern sep-ws none (+ ws))
+(define-peg-pattern lead-ws none
+                    (* ws))
+(define-peg-pattern sep-ws none
+                    (+ ws))
 
 ;; In-buffer settings and metadata such as `#+TITLE:` or `#+AUTHOR:`.
 ;; The key is restricted so that block delimiters (`#+BEGIN_SRC`) can never be
@@ -304,7 +304,8 @@
                     (and lead-ws
                          comment-hash
                          (not-followed-by "+")
-                         (or sep-ws (followed-by eol))
+                         (or sep-ws
+                             (followed-by eol))
                          comment-content
                          eol))
 
@@ -313,11 +314,9 @@
                     (* (and (not-followed-by eol) peg-any)))
 (define-peg-pattern fixed-width-colon none ":")
 (define-peg-pattern fixed-width all
-                    (and lead-ws
-                         fixed-width-colon
-                         (or sep-ws (followed-by eol))
-                         fixed-width-content
-                         eol))
+                    (and lead-ws fixed-width-colon
+                         (or sep-ws
+                             (followed-by eol)) fixed-width-content eol))
 
 ;; ======================================================================
 ;; Paragraphs
@@ -371,8 +370,8 @@
                       inline-bold-content "*")
 (define-inline-markup inline-underline inline-underline-delimiter
                       inline-underline-body inline-underline-content "_")
-(define-inline-markup inline-strike inline-strike-delimiter
-                      inline-strike-body inline-strike-content "+")
+(define-inline-markup inline-strike inline-strike-delimiter inline-strike-body
+                      inline-strike-content "+")
 
 ;; Superscript and subscript, in their unambiguous braced form
 ;; (`x^{2}` and `x_{i}`).  The bare forms (`x^2`) are intentionally not
@@ -384,8 +383,8 @@
 (define-peg-pattern inline-superscript-content all
                     (+ (and (not-followed-by "}") peg-any)))
 (define-peg-pattern inline-superscript body
-                    (and mark-caret mark-brace-open
-                         inline-superscript-content mark-brace-close))
+                    (and mark-caret mark-brace-open inline-superscript-content
+                         mark-brace-close))
 (define-peg-pattern inline-subscript-content all
                     (+ (and (not-followed-by "}") peg-any)))
 (define-peg-pattern inline-subscript body
@@ -413,8 +412,8 @@
 (define-peg-pattern inline-footnote-inline all
                     (and fn-open-inline footnote-content fn-close))
 (define-peg-pattern inline-footnote-def all
-                    (and fn-open footnote-label fn-colon
-                         footnote-content fn-close))
+                    (and fn-open footnote-label fn-colon footnote-content
+                         fn-close))
 (define-peg-pattern inline-footnote-ref all
                     (and fn-open footnote-label fn-close))
 (define-peg-pattern link-open none "[[")
@@ -488,37 +487,58 @@
 (define org-todo-keywords
   ;; The TODO keywords recognised at the start of a heading.  Org lets these be
   ;; customised per document; this is the common default set.
-  '("TODO" "DONE" "NEXT" "WAIT" "WAITING" "HOLD" "HOLDING" "STARTED"
-    "CANCELLED" "CANCELED" "IDEA" "NOTE" "FIXME" "PROJ" "IN-PROGRESS"))
+  '("TODO" "DONE"
+    "NEXT"
+    "WAIT"
+    "WAITING"
+    "HOLD"
+    "HOLDING"
+    "STARTED"
+    "CANCELLED"
+    "CANCELED"
+    "IDEA"
+    "NOTE"
+    "FIXME"
+    "PROJ"
+    "IN-PROGRESS"))
 
 (define (trim-whitespace str)
   "Return @var{str} without leading or trailing spaces and tabs."
   (let ((n (string-length str)))
-    (let skip-leading ((i 0))
+    (let skip-leading
+      ((i 0))
       (if (and (< i n)
                (or (char=? (string-ref str i) #\space)
                    (char=? (string-ref str i) #\tab)))
           (skip-leading (+ i 1))
-          (let skip-trailing ((j n))
+          (let skip-trailing
+            ((j n))
             (if (and (> j i)
-                     (or (char=? (string-ref str (- j 1)) #\space)
-                         (char=? (string-ref str (- j 1)) #\tab)))
+                     (or (char=? (string-ref str
+                                             (- j 1)) #\space)
+                         (char=? (string-ref str
+                                             (- j 1)) #\tab)))
                 (skip-trailing (- j 1))
                 (substring str i j)))))))
 
 (define (last-whitespace-index str)
   "Return the index of the last space or tab in @var{str}, or @code{#f}."
-  (let loop ((i (- (string-length str) 1)))
-    (cond ((< i 0) #f)
-          ((or (char=? (string-ref str i) #\space)
-               (char=? (string-ref str i) #\tab)) i)
-          (else (loop (- i 1))))))
+  (let loop
+    ((i (- (string-length str) 1)))
+    (cond
+      ((< i 0)
+       #f)
+      ((or (char=? (string-ref str i) #\space)
+           (char=? (string-ref str i) #\tab))
+       i)
+      (else (loop (- i 1))))))
 
 (define (tag-character? c)
   "Return @code{#t} when @var{c} may appear inside an Org tag."
   (or (char-alphabetic? c)
       (char-numeric? c)
-      (memv c (list #\_ #\@ #\# #\% #\-))))
+      (memv c
+            (list #\_ #\@ #\# #\% #\-))))
 
 (define (parse-tags str)
   "Return the list of tags in @var{str} when it looks like @code{:a:b:}.
@@ -526,15 +546,16 @@ Returns @code{#f} otherwise, so a title that merely ends with a colon is not
 mistaken for a tag group."
   (and (> (string-length str) 2)
        (char=? (string-ref str 0) #\:)
-       (char=? (string-ref str (- (string-length str) 1)) #\:)
-       (let ((inner (substring str 1 (- (string-length str) 1))))
+       (char=? (string-ref str
+                           (- (string-length str) 1)) #\:)
+       (let ((inner (substring str 1
+                               (- (string-length str) 1))))
          (and (not (string-null? inner))
               (let ((parts (string-split inner #\:)))
                 (and (every (lambda (part)
                               (and (not (string-null? part))
-                                   (every tag-character? (string->list part))))
-                            parts)
-                     parts))))))
+                                   (every tag-character?
+                                          (string->list part)))) parts) parts))))))
 
 (define (parse-heading text)
   "Split the text of a heading @var{text} into its structural parts.
@@ -544,16 +565,20 @@ empty."
   (let* ((trimmed (trim-whitespace text))
          (tags (let ((wi (last-whitespace-index trimmed)))
                  (and wi
-                      (parse-tags (substring trimmed (+ wi 1) (string-length trimmed))))))
+                      (parse-tags (substring trimmed
+                                             (+ wi 1)
+                                             (string-length trimmed))))))
          (body (if tags
-                   (trim-whitespace (substring trimmed 0 (last-whitespace-index trimmed)))
+                   (trim-whitespace (substring trimmed 0
+                                               (last-whitespace-index trimmed)))
                    trimmed))
          (todo (let ((sp (string-index body #\space)))
                  (and sp
                       (let ((first (substring body 0 sp)))
                         (and (member first org-todo-keywords) first)))))
          (after-todo (if todo
-                         (trim-whitespace (substring body (string-length todo)))
+                         (trim-whitespace (substring body
+                                                     (string-length todo)))
                          body))
          (priority-close (and (>= (string-length after-todo) 3)
                               (string-prefix? "[#" after-todo)
@@ -561,30 +586,39 @@ empty."
          (priority (and priority-close
                         (substring after-todo 2 priority-close)))
          (title (if priority
-                    (trim-whitespace (substring after-todo (+ priority-close 1)))
+                    (trim-whitespace (substring after-todo
+                                                (+ priority-close 1)))
                     after-todo)))
-    (values todo priority title (or tags '()))))
+    (values todo priority title
+            (or tags
+                '()))))
 
 (define (process-ast ast)
   "Recursively process the Abstract Syntax Tree @var{ast} generated by the PEG parser.
-This function traverses the tree and restructures flat list nodes
-(such as @code{unordered-list}, @code{ordered-list}, and @code{description-list})
-into properly nested list trees by invoking @code{build-list-tree}.  Headings
-are split into their TODO keyword, priority and tags so renderers need not know
-about Org's heading syntax."
+This function traverses the tree and restructures each flat @code{org-list}
+into a properly nested list tree by invoking @code{build-list-tree}; the
+resulting @code{nested-list} nodes hold items of any kind, so a nested list may
+change its bullet type.  Headings are split into their TODO keyword, priority
+and tags so renderers need not know about Org's heading syntax."
   (match ast
-    (((and list-type (or (quote unordered-list) (quote ordered-list) (quote description-list))) . items)
-     (cons list-type
-           (car (build-list-tree items 0))))
-    (('heading (? string? stars) ('line-content text))
+    (((quote org-list) . items) (cons 'org-list
+                                      (car (build-list-tree items 0))))
+    (('heading (? string? stars)
+      ('line-content text))
      (call-with-values (lambda ()
                          (parse-heading text))
-       (lambda (todo priority title tags)
-         `(heading ,stars
-                   ,@(if todo (list `(heading-todo ,todo)) '())
-                   ,@(if priority (list `(heading-priority ,priority)) '())
-                   (line-content ,title)
-                   ,@(if (null? tags) '() (list (cons 'heading-tags tags)))))))
+                       (lambda (todo priority title tags)
+                         `(heading ,stars
+                                   ,@(if todo
+                                         (list `(heading-todo ,todo))
+                                         '())
+                                   ,@(if priority
+                                         (list `(heading-priority ,priority))
+                                         '())
+                                   (line-content ,title)
+                                   ,@(if (null? tags)
+                                         '()
+                                         (list (cons 'heading-tags tags)))))))
     ((node-type . children) (if (list? children)
                                 (cons node-type
                                       (map process-ast children)) ast))
@@ -651,5 +685,10 @@ raw URLs, inline code, and links, returning the resulting AST."
   "Parse an entire Org-mode document string @var{str} into an Abstract Syntax Tree.
 This is the main entry point for the parser. It matches the @code{org-doc}
 PEG pattern and then applies @code{process-ast} to resolve hierarchical
-constructs like nested lists."
-  (process-ast (peg:tree (match-pattern org-doc str))))
+constructs like nested lists.  A single top-level element comes back as that
+element's node; several come back as a list of nodes."
+  (let ((tree (peg:tree (match-pattern org-doc str))))
+    (if (and (pair? tree)
+             (symbol? (car tree)))
+        (process-ast tree)
+        (map process-ast tree))))

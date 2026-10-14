@@ -133,20 +133,22 @@ is not a checkbox item."
   (match (string-match "^\\[([ xX])\\][[:space:]]+" text)
     (#f #f)
     (m (cons (let ((c (match:substring m 1)))
-               (or (string=? c "x") (string=? c "X")))
-             (substring text (match:end m 0))))))
+               (or (string=? c "x")
+                   (string=? c "X")))
+             (substring text
+                        (match:end m 0))))))
 
 (define (render-checkbox checkbox)
   "Return a list holding an SXML checkbox input for @var{checkbox}, or '().
 @var{checkbox} is the value produced by @code{split-checkbox}."
   (if (not checkbox)
       '()
-      (list `(input ,@(make-sxml-attrs
-                       (checkbox-classes)
-                       (append '((type "checkbox") (disabled "disabled"))
-                               (if (car checkbox)
-                                   '((checked "checked"))
-                                   '())))))))
+      (list `(input ,@(make-sxml-attrs (checkbox-classes)
+                                       (append '((type "checkbox")
+                                                 (disabled "disabled"))
+                                               (if (car checkbox)
+                                                   '((checked "checked"))
+                                                   '())))))))
 
 (define (inline-org->sxml ast)
   "Convert an inline Org AST into a list of SXML nodes."
@@ -220,7 +222,8 @@ is not a checkbox item."
         ('footnote-content definition))
        `(span ,@(make-sxml-attrs '("footnote-def")
                                  `((id ,(format #f "fn-~a" label))))
-              (sup ,@(make-sxml-attrs '("footnote-label")) ,label)
+              (sup ,@(make-sxml-attrs '("footnote-label"))
+                   ,label)
               ,definition))
 
       ;; [fn::inline definition]
@@ -273,6 +276,109 @@ is not a checkbox item."
   "Convert an inline Org AST into an HTML string."
   (sxml->html-string (inline-org->sxml ast)))
 
+;;; List Rendering Helpers
+
+(define (list-item-kind item)
+  "Return the kind of a list @var{item}: @code{unordered}, @code{ordered},
+@code{description} or @code{other}."
+  (match item
+    (((quote unordered-item) . _) 'unordered)
+    (((quote ordered-item) . _) 'ordered)
+    (((quote desc-item) . _) 'description)
+    (_ 'other)))
+
+(define (group-list-items items)
+  "Group consecutive @var{items} of the same kind into @code{(kind . items)}
+runs, preserving their original order.  Org lists may mix unordered, ordered
+and description items, so each run becomes its own list element."
+  (let loop
+    ((items items)
+     (kind #f)
+     (acc '())
+     (groups '()))
+    (cond
+      ((null? items)
+       (reverse (if (null? acc) groups
+                    (cons (cons kind
+                                (reverse acc)) groups))))
+      ((eq? (list-item-kind (car items)) kind)
+       (loop (cdr items) kind
+             (cons (car items) acc) groups))
+      (else (loop (cdr items)
+                  (list-item-kind (car items))
+                  (list (car items))
+                  (if (null? acc) groups
+                      (cons (cons kind
+                                  (reverse acc)) groups)))))))
+
+(define (render-nested-lists sub-nodes)
+  "Render the @var{sub-nodes} of a list item, expanding nested lists of any
+kind into list elements of their own."
+  (append-map (lambda (node)
+                (match node
+                  (('nested-list items ...)
+                   (render-list items))
+                  (_ (org-ast->sxml node)))) sub-nodes))
+
+(define (render-unordered-item item)
+  (match item
+    (('unordered-item ('line-content text) sub ...)
+     (let* ((checkbox (split-checkbox text))
+            (body (if checkbox
+                      (cdr checkbox) text)))
+       `(li ,@(make-sxml-attrs (unordered-list-item-classes))
+            ,@(render-checkbox checkbox)
+            ,@(inline-org->sxml (inline-org->ast body))
+            ,@(render-nested-lists sub))))
+    (_ #f)))
+
+(define (render-ordered-item item)
+  (match item
+    (('ordered-item ('line-content text) sub ...)
+     (let* ((checkbox (split-checkbox text))
+            (body (if checkbox
+                      (cdr checkbox) text)))
+       `(li ,@(make-sxml-attrs (ordered-list-item-classes))
+            ,@(render-checkbox checkbox)
+            ,@(inline-org->sxml (inline-org->ast body))
+            ,@(render-nested-lists sub))))
+    (_ #f)))
+
+(define (render-desc-item item)
+  (match item
+    (('desc-item ('desc-key key)
+      ('line-content text) sub ...)
+     `((dt ,@(make-sxml-attrs (description-term-classes))
+           ,@(inline-org->sxml (inline-org->ast key)))
+       (dd ,@(make-sxml-attrs (description-detail-classes))
+           ,@(inline-org->sxml (inline-org->ast text))
+           ,@(render-nested-lists sub))))
+    (_ '())))
+
+(define (render-list-group kind items)
+  "Render one run of same-kind list @var{items} as a single list element."
+  (cond
+    ((eq? kind
+          'unordered)
+     `(ul ,@(make-sxml-attrs (unordered-list-classes))
+          ,@(filter-map render-unordered-item items)))
+    ((eq? kind
+          'ordered)
+     `(ol ,@(make-sxml-attrs (ordered-list-classes))
+          ,@(filter-map render-ordered-item items)))
+    ((eq? kind
+          'description)
+     `(dl ,@(make-sxml-attrs (description-list-classes))
+          ,@(append-map render-desc-item items)))
+    (else #f)))
+
+(define (render-list items)
+  "Render a list's @var{items}, splitting them into runs of the same kind."
+  (filter-map (lambda (group)
+                (render-list-group (car group)
+                                   (cdr group)))
+              (group-list-items items)))
+
 ;;; Block Org AST -> SXML Transformation
 
 (define (org-ast->sxml ast)
@@ -281,104 +387,99 @@ is not a checkbox item."
     (match node
       
       ;; Headings
-      (('heading (? string? s) . children)
-       (let* ((lvl (string-length s))
-              (tag (string->symbol (format #f "h~a" lvl)))
-              (todo (any (lambda (c)
-                           (match c
-                             (('heading-todo x) x)
-                             (_ #f))) children))
-              (priority (any (lambda (c)
-                               (match c
-                                 (('heading-priority x) x)
-                                 (_ #f))) children))
-              (tags (append-map (lambda (c)
-                                  (match c
-                                    (('heading-tags xs ...) xs)
-                                    (_ '()))) children))
-              (text (any (lambda (c)
-                           (match c
-                             (('line-content x) x)
-                             (_ #f))) children))
-              (classes (append ((heading-classes) lvl)
-                               (if todo
-                                   (list "org-todo"
-                                         (format #f "org-todo-~a"
-                                                 (string-downcase todo)))
-                                   '()))))
-         `(,tag ,@(make-sxml-attrs classes)
-                ,@(if todo
-                      (list `(span ,@(make-sxml-attrs '("org-todo")) ,todo))
-                      '())
-                ,@(if priority
-                      (list `(span ,@(make-sxml-attrs '("org-priority"))
-                                   ,(format #f "[#~a]" priority)))
-                      '())
-                ,@(inline-org->sxml (inline-org->ast (or text "")))
-                ,@(if (null? tags)
-                      '()
-                      (list `(span ,@(make-sxml-attrs '("org-tags"))
-                                   ,@(map (lambda (t)
-                                            `(span ,@(make-sxml-attrs '("org-tag"))
-                                                   ,t))
-                                          tags)))))))
+      (((quote heading) (? string? s) . children) (let* ((lvl (string-length s))
+                                                         (tag (string->symbol (format
+                                                                               #f
+                                                                               "h~a"
+                                                                               lvl)))
+                                                         (todo (any (lambda (c)
+                                                                      (match c
+                                                                        (('heading-todo
+                                                                          x)
+                                                                         x)
+                                                                        (_ #f)))
+                                                                    children))
+                                                         (priority (any (lambda 
+                                                                                (c)
+                                                                          (match c
+                                                                            (('heading-priority
+                                                                              x)
+                                                                             x)
+                                                                            (_
+                                                                             #f)))
+                                                                    children))
+                                                         (tags (append-map (lambda 
+                                                                                   (c)
+                                                                             (match c
+                                                                               
+                                                                               (
+                                                                                ('heading-tags
+                                                                                 xs
+                                                                                 ...)
+                                                                                xs)
+                                                                               
+                                                                               (_ '())))
+                                                                children))
+                                                         (text (any (lambda (c)
+                                                                      (match c
+                                                                        (('line-content
+                                                                          x)
+                                                                         x)
+                                                                        (_ #f)))
+                                                                    children))
+                                                         (classes (append ((heading-classes)
+                                                                           lvl)
+                                                                          (if
+                                                                           todo
+                                                                           (list
+                                                                            "org-todo"
+                                                                            (format
+                                                                             #f
+                                                                             "org-todo-~a"
+                                                                             (string-downcase
+                                                                              todo)))
+                                                                           '()))))
+                                                    `(,tag ,@(make-sxml-attrs
+                                                              classes)
+                                                      ,@(if todo
+                                                            (list `(span ,@(make-sxml-attrs '
+                                                                            ("org-todo"))
+                                                                         ,todo))
+                                                            '())
+                                                      ,@(if priority
+                                                            (list `(span ,@(make-sxml-attrs '
+                                                                            ("org-priority"))
+                                                                         ,(format
+                                                                           #f
+                                                                           "[#~a]"
+                                                                           priority)))
+                                                            '())
+                                                      ,@(inline-org->sxml (inline-org->ast
+                                                                           (or
+                                                                            text
+                                                                            "")))
+                                                      ,@(if (null? tags)
+                                                            '()
+                                                            (list `(span ,@(make-sxml-attrs '
+                                                                            ("org-tags"))
+                                                                         ,@(map (lambda 
+                                                                                        (t)
+                                                                                  `
+                                                                                  (span ,@
+                                                                                   (make-sxml-attrs '
+                                                                                    ("org-tag"))
+                                                                                   ,t))
+                                                                            tags)))))))
 
       ;; Horizontal Separator
       (('separator sep-content)
        `(hr ,@(make-sxml-attrs (separator-classes))))
 
-      ;; Nested list resolver
+      ;; Lists, which may mix item kinds and nest lists of a different kind.
+      (('org-list items ...)
+       (render-list items))
       (('nested-list items ...)
-       (if (null? items) #f
-           (match (car items)
-             (((quote unordered-item) . _) (render `(unordered-list ,@items)))
-             (((quote ordered-item) . _) (render `(ordered-list ,@items)))
-             (((quote desc-item) . _) (render `(description-list ,@items)))
-             (_ #f))))
-
-      ;; Description lists
-      (('description-list items ...)
-       `(dl ,@(make-sxml-attrs (description-list-classes))
-            ,@(append-map (lambda (li)
-                            (match li
-                              (('desc-item ('desc-key key)
-                                ('line-content text) sub-nodes ...)
-                               `((dt ,@(make-sxml-attrs (description-term-classes))
-                                     ,@(inline-org->sxml (inline-org->ast key)))
-                                 (dd ,@(make-sxml-attrs (description-detail-classes))
-                                     ,@(inline-org->sxml (inline-org->ast text))
-                                     ,@(org-ast->sxml sub-nodes))))
-                              (_ '()))) items)))
-
-      ;; Unordered lists
-      (('unordered-list items ...)
-       `(ul ,@(make-sxml-attrs (unordered-list-classes))
-            ,@(filter-map (lambda (li)
-                            (match li
-                              (('unordered-item ('line-content text) sub-nodes
-                                ...)
-                               (let* ((checkbox (split-checkbox text))
-                                      (body (if checkbox (cdr checkbox) text)))
-                                 `(li ,@(make-sxml-attrs (unordered-list-item-classes))
-                                      ,@(render-checkbox checkbox)
-                                      ,@(inline-org->sxml (inline-org->ast body))
-                                      ,@(org-ast->sxml sub-nodes))))
-                              (_ #f))) items)))
-
-      ;; Ordered lists
-      (('ordered-list items ...)
-       `(ol ,@(make-sxml-attrs (ordered-list-classes))
-            ,@(filter-map (lambda (li)
-                            (match li
-                              (('ordered-item ('line-content text) sub-nodes
-                                ...)
-                               (let* ((checkbox (split-checkbox text))
-                                      (body (if checkbox (cdr checkbox) text)))
-                                 `(li ,@(make-sxml-attrs (ordered-list-item-classes))
-                                      ,@(render-checkbox checkbox)
-                                      ,@(inline-org->sxml (inline-org->ast body))
-                                      ,@(org-ast->sxml sub-nodes))))
-                              (_ #f))) items)))
+       (render-list items))
 
       ;; Paragraph
       (('paragraph ('line-content text))
@@ -406,18 +507,31 @@ is not a checkbox item."
 
       ;; Verse block: literal lines joined by forced line breaks.
       (('verse-block ('verse-content text))
-       (let ((lines (string-split (string-trim-right text (lambda (c) (char=? c #\newline))) #\newline)))
+       (let ((lines (string-split (string-trim-right text
+                                                     (lambda (c)
+                                                       (char=? c #\newline)))
+                                  #\newline)))
          `(p ,@(make-sxml-attrs (verse-block-classes))
-             ,@(let loop ((ls lines))
-                 (cond ((null? ls) '())
-                       ((null? (cdr ls)) (list (car ls)))
-                       (else (cons (car ls)
-                                   (cons '(br) (loop (cdr ls))))))))))
+             ,@(let loop
+                 ((ls lines))
+                 (cond
+                   ((null? ls)
+                    '())
+                   ((null? (cdr ls))
+                    (list (car ls)))
+                   (else (cons (car ls)
+                               (cons '(br)
+                                     (loop (cdr ls))))))))))
 
       ;; Center block: contents are ordinary Org, centred in HTML.
       (('center-block ('center-content text))
        `(div ,@(make-sxml-attrs (center-block-classes))
-             (p ,@(inline-org->sxml (inline-org->ast (string-trim-right text (lambda (c) (char=? c #\newline))))))))
+             (p ,@(inline-org->sxml (inline-org->ast (string-trim-right text
+                                                                        (lambda 
+                                                                                (c)
+                                                                          (char=?
+                                                                           c
+                                                                           #\newline))))))))
 
       ;; Source block
       (('src-block ('lang l)
@@ -485,9 +599,20 @@ is not a checkbox item."
                        (symbol? (car ast)))
                   (list ast))
                  (else ast))))
-    (filter-map (lambda (node)
+    ;; A single node may render to several sibling nodes (a mixed list renders
+    ;; to one or more list elements, a description item to a <dt>/<dd> pair),
+    ;; so the results are spliced rather than collected.
+    (append-map (lambda (node)
                   (let ((res (render node)))
-                    (if (equal? res "") #f res))) nodes)))
+                    (cond
+                      ((not res)
+                       '())
+                      ((and (pair? res)
+                            (symbol? (car res)))
+                       (list res))
+                      ((list? res)
+                       res)
+                      (else (list res))))) nodes)))
 
 (define (org-ast->html ast)
   "Convert a document Org AST into an HTML string."

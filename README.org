@@ -134,8 +134,8 @@ For example, this:
 can become something conceptually similar to:
 
 #+begin_src scheme
-(description-list
- (unordered-item
+(org-list
+ (desc-item
   (desc-key "name")
   (line-content "Joe")))
 #+end_src
@@ -278,13 +278,81 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 --------------
 
+* The library API
+
+OrgWebAlchemy is three small modules.  Each builds on the one before it, so you
+only pull in what you need.
+
+** ~(orgwebalchemy peg)~ — the parser
+
+The parser turns Org text into an AST and knows nothing about HTML or Markdown.
+
+- ~(org->ast str)~ :: parse a whole document.  A single top-level element comes
+  back as that element's node; several come back as a list of nodes.
+- ~(inline-org->ast str)~ :: parse one line of inline markup.
+
+** ~(orgwebalchemy html)~ — rendering to HTML
+
+- ~(org->html str)~ :: Org text to an HTML fragment.
+- ~(org->sxml str)~, ~(org-ast->sxml ast)~ :: Org to SXML, when you want to
+  post-process the tree with ~(sxml simple)~.
+- ~(org-ast->html ast)~ :: a parsed document AST to an HTML fragment.
+- ~(inline-org->html ast)~, ~(inline-org->sxml ast)~ :: inline markup only.
+- ~(sxml->html-string sxml)~ :: the small SXML serialiser the library uses.
+
+** ~(orgwebalchemy markdown)~ — rendering to Markdown
+
+- ~(org->markdown str)~ :: Org text to Markdown.
+- ~(org-ast->markdown ast)~ :: a parsed document AST to Markdown.
+- ~(inline-org->markdown ast)~ :: inline markup only.
+
+** Customising the HTML output
+
+Every element the HTML renderer produces reads its CSS classes from a Guile
+parameter, so one document can be styled for any design system without touching
+the parser:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy html))
+
+(parameterize ((heading-classes
+                (lambda (level)
+                  (case level
+                    ((1) '("text-4xl" "font-bold"))
+                    ((2) '("text-2xl" "font-semibold"))
+                    (else '("text-base")))))
+               (paragraph-classes '("leading-relaxed" "mb-4"))
+               (link-classes '("underline" "text-blue-600")))
+  (org->html "This paragraph is *bold*.\n"))
+#+end_src
+
+The parameters are ~link-classes~, ~code-classes~, ~code-block-classes~,
+~quote-block-classes~, ~example-block-classes~, ~italic-classes~,
+~bold-classes~, ~underline-classes~, ~strike-classes~, ~superscript-classes~,
+~subscript-classes~, ~separator-classes~, ~paragraph-classes~,
+~table-classes~ and its ~-header-row~, ~-header-cell~, ~-row~ and ~-cell~
+variants, ~description-list-classes~ with ~description-term-classes~ and
+~description-detail-classes~, ~unordered-list-classes~ with
+~unordered-list-item-classes~, ~ordered-list-classes~ with
+~ordered-list-item-classes~, ~checkbox-classes~, ~keyword-classes~,
+~fixed-width-classes~, ~verse-block-classes~, ~center-block-classes~ and
+~heading-classes~, which is special: it is a procedure of the heading level
+rather than a list, so each level can be styled on its own.
+
+The Markdown renderer is deliberately not configurable: Markdown has no styling
+of its own.
+
+--------------
+
 * Supported Org features
 
 - Headings (lines  starting by n ~*~), including an optional TODO keyword,
   priority (~[#A]~) and tags (~:tag1:tag2:~)
 - Paragraphs (any "non-special" text)
 - Unordered, Ordered and Description lists (with any level of nesting), with
-  checkbox items (~- [ ]~ and ~- [X]~)
+  checkbox items (~- [ ]~ and ~- [X]~).  The three kinds may be mixed freely:
+  one list may change its bullet type part-way through, and a nested list may
+  use a different kind from its parent
 - Italic, Bold, Underline, Strikethrough, Inline Code and Verbatim
 - Superscript and subscript in their braced form (~x^{2}~, ~H_{2}O~)
 - Forced line breaks (~\\~ at the end of a line) and escaped markup (~\*~)
@@ -324,6 +392,76 @@ way to keep their meaning:
 #+end_src
 
 --------------------
+
+* Benchmarks
+
+The parser and the two renderers are benchmarked with
+[[https://codeberg.org/jjba23/veritas][Veritas]], the same test framework
+used for the unit suite.  The benchmarks live in
+[[file:test/veritas/benchmark/scope.scm]] and are deliberately kept out of the
+normal test run: they are selected by the test type, so nothing slows down
+~maak test~.
+
+Run them with:
+
+#+begin_src shell
+VERITAS_TEST_TYPE=benchmark \
+guix shell -m manifest.scm -- guile -L ./src -L ./test \
+  -c '((@ (veritas runner) run-tests))'
+#+end_src
+
+Veritas profiles every workload with Guile's ~statprof~, and the suite then
+prints a deterministic wall-clock table.  On an AMD Ryzen 5 7640U, under Guile
+3.0.9 inside the project's Guix shell, that table looks like this:
+
+| Workload                               | Iterations | Total (ms) | Per operation (µs) |
+|----------------------------------------+------------+------------+--------------------|
+| Parse the feature fixture (1 KB)       |       2000 |    1091.66 |             545.83 |
+| Parse README.org (19 KB)               |        200 |    2690.93 |           13454.64 |
+| Render the feature fixture to HTML     |       2000 |    4596.62 |            2298.31 |
+| Render the feature fixture to Markdown |       2000 |    4204.88 |            2102.44 |
+| Parse a 50-clause inline paragraph     |       2000 |   16102.86 |            8051.43 |
+
+A few things worth reading out of it:
+
+- Parsing ~README.org~ costs about 13.5 ms for 19 KB, which is the honest cost
+  of a recursive PEG with backtracking and no memoisation.
+- Rendering is a separate pass over the AST, and HTML and Markdown cost about
+  the same, as one would expect from two renderers walking the same tree.
+- Inline parsing is the most expensive stage per byte: a 50-clause paragraph
+  has many alternatives to try at every position.
+
+These are indicative numbers, not guarantees.  They depend on the machine, on
+the Guile version, and on how much of the run the garbage collector decides to
+collect.  Reproduce them on your own hardware with the command above.
+
+** What the benchmarks do not cover
+
+The benchmarks measure the current, straightforward implementation.  They do
+not yet track memory allocation, and they do not compare against other Org
+implementations.  Both would be welcome additions; see the OrgWebAlchemy
+Project section at the end of this document.
+
+* Testing
+
+The project is tested with [[https://codeberg.org/jjba23/veritas][Veritas]], a
+testing framework for Guile.  Suites live under [[file:test/veritas/unit/]] and
+cover the grammar ([[file:test/veritas/unit/peg-spec.scm]]), the HTML renderer
+([[file:test/veritas/unit/html-spec.scm]]) and the Markdown renderer
+([[file:test/veritas/unit/markdown-spec.scm]]).  They use table-driven
+~test-each~ and ~suite-each~ cases, snapshot testing for whole documents, and a
+range of assertions (~assert-equal~, ~assert-contains~, ~assert-matches~,
+~assert-length~, ~assert-no-error~, ...).
+
+Run the unit suite with:
+
+#+begin_src shell
+guix shell -m manifest.scm -- guile -L ./src -L ./test \
+  -c '((@ (veritas runner) run-tests))'
+#+end_src
+
+or with ~maak test~.  Fixtures under [[file:test/fixtures/]] are shared between
+the suites and the benchmarks, so both stay honest about the same documents.
 
 
 * Projects that use Orgwebalchemy
