@@ -1,0 +1,63 @@
+#+title: Feature Showcase
+#+author: OrgWebAlchemy
+
+# A single comment line.
+
+* Introduction
+This paragraph shows *bold*, /italic/, ~code~, =verbatim=, _underline_, +strikethrough+, x^{2}, H_{2}O.
+A forced break here:\\
+and then the continuation.
+
+See [[https://gnu.org][GNU]] or a raw link https://example.org plus a
+footnote reference[fn:one] and an inline footnote[fn::like this].
+
+[fn:one] The footnote definition.
+
+* TODO [#A] A Task :work:urgent:
+- [ ] unchecked item
+- [X] checked item
+  - nested item
+
+* Lists
+1) first
+2) second
+
+- Term :: Definition
+
+* Blocks
+#+BEGIN_SRC scheme
+(display "hi")
+#+END_SRC
+
+#+BEGIN_EXAMPLE
+*literal*
+#+END_EXAMPLE
+
+#+BEGIN_QUOTE
+Quoted *text*
+#+END_QUOTE
+
+#+BEGIN_VERSE
+line one
+line two
+#+END_VERSE
+
+#+BEGIN_CENTER
+centered line
+#+END_CENTER
+
+#+BEGIN_EXPORT html
+<div class="raw">Raw HTML</div>
+#+END_EXPORT
+
+#+BEGIN_COMMENT
+hidden comment
+#+END_COMMENT
+
+: a fixed-width line
+
+---------
+
+| Name | Age |
+|------+-----|
+| Ada  | 36  |

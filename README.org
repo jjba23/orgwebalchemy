@@ -20,7 +20,8 @@ https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
 * What OrgWebAlchemy gives you
 
-This package provides among others the ~org->html~ function.
+This package provides among others the ~org->html~ and ~org->markdown~ functions,
+turning Org-mode into either HTML or Markdown.
 
 See the [[file:test/][tests of this library]] to understand better how to use it. This library also exposes multiple parameters which can be used to customize behavior and final result (CSS classes for example).
 
@@ -31,6 +32,15 @@ In a simplified way:
 (org->html "This is ~test~ code.")
 ;; results in:
 ;; "This is <code>test</code> code."
+#+end_src
+
+And for Markdown:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy markdown))
+(org->markdown "This is ~test~ code.")
+;; results in:
+;; "This is `test` code."
 #+end_src
 
 ---------------------------------
@@ -152,9 +162,10 @@ Org text
    |
    v
  AST
-   |
-   v
- HTML renderer
+   |        |
+   v        v
+ HTML     Markdown
+ renderer renderer
 #+end_example
 
 This separation keeps the parser concerned with *syntax* and the renderer concerned with *presentation*.
@@ -269,17 +280,48 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 * Supported Org features
 
-- Headings (lines  starting by n ~*~)
+- Headings (lines  starting by n ~*~), including an optional TODO keyword,
+  priority (~[#A]~) and tags (~:tag1:tag2:~)
 - Paragraphs (any "non-special" text)
-- Unordered, Ordered and Description lists (with any level of nesting)
-- Italic, Bold, Inline Code
-- Links with and without description (with nested parsing)
+- Unordered, Ordered and Description lists (with any level of nesting), with
+  checkbox items (~- [ ]~ and ~- [X]~)
+- Italic, Bold, Underline, Strikethrough, Inline Code and Verbatim
+- Superscript and subscript in their braced form (~x^{2}~, ~H_{2}O~)
+- Forced line breaks (~\\~ at the end of a line) and escaped markup (~\*~)
+- Links with and without description (with nested parsing) and bare URLs
+- Footnotes: references (~[fn:label]~), definitions (~[fn:label: text]~) and
+  inline footnotes (~[fn::text]~)
+- Keywords and in-buffer settings (~#+TITLE: ...~, ~#+AUTHOR: ...~, ...)
+- Comments: single lines beginning with ~#~ and ~#+begin_comment~ blocks
+- Fixed-width lines (~: text~)
 - Horizontal separators (~--------~) five or more dashes
 - Tables
 - ~#+begin_src~
 - ~#+begin_example~
 - ~#+begin_quote~ (with nested parsing)
+- ~#+begin_verse~ and ~#+begin_center~
 - ~#+begin_export html~ : Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output.
+
+** Exporting to Markdown
+
+The ~(orgwebalchemy markdown)~ module renders the same AST as the HTML module.
+It exports ~org->markdown~ (an Org string), ~org-ast->markdown~ (a parsed AST)
+and ~inline-org->markdown~ (an inline AST).   Markdown has no equivalent for
+some Org constructs, so those fall back to inline HTML where that is the only
+way to keep their meaning:
+
+- underlines become ~<u>...</u>~
+- superscript and subscript become ~<sup>...</sup>~ and ~<sub>...</sub>~
+- strikethrough becomes ~~~text~~~
+- description lists use the definition-list indentation convention
+- footnotes use the ~[^label]~ and ~^[note]~ conventions
+
+#+begin_src scheme
+(use-modules (orgwebalchemy markdown))
+(org->markdown "* Title\nSome *bold* text.\n")
+;; results in:
+;; "# Title\n\nSome **bold** text.\n\n"
+#+end_src
 
 --------------------
 

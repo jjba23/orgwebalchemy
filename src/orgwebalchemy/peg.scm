@@ -89,8 +89,14 @@
                         table
                         src-block
                         quote-block
+                        verse-block
+                        center-block
                         example-block
                         export-html-block
+                        comment-block
+                        keyword
+                        comment-line
+                        fixed-width
                         description-list
                         unordered-list
                         ordered-list
@@ -241,6 +247,78 @@
 (define-peg-pattern src-content all
                     (* (and (not-followed-by end-src) peg-any)))
 
+;; =====================================================================
+;; Verse, Center & Comment Blocks
+;; =====================================================================
+
+(define-peg-pattern begin-verse none
+                    (or "#+BEGIN_VERSE" "#+begin_verse"))
+(define-peg-pattern end-verse none
+                    (or "#+END_VERSE" "#+end_verse"))
+(define-block-pattern verse-block begin-verse end-verse verse-content)
+
+(define-peg-pattern begin-center none
+                    (or "#+BEGIN_CENTER" "#+begin_center"))
+(define-peg-pattern end-center none
+                    (or "#+END_CENTER" "#+end_center"))
+(define-block-pattern center-block begin-center end-center center-content)
+
+(define-peg-pattern begin-comment none
+                    (or "#+BEGIN_COMMENT" "#+begin_comment"))
+(define-peg-pattern end-comment none
+                    (or "#+END_COMMENT" "#+end_comment"))
+(define-block-pattern comment-block begin-comment end-comment
+                      comment-block-content)
+
+;; =====================================================================
+;; Keywords, Comments & Fixed-Width Lines
+;; =====================================================================
+
+;; Whitespace patterns that leave no trace in the AST.
+(define-peg-pattern lead-ws none (* ws))
+(define-peg-pattern sep-ws none (+ ws))
+
+;; In-buffer settings and metadata such as `#+TITLE:` or `#+AUTHOR:`.
+;; The key is restricted so that block delimiters (`#+BEGIN_SRC`) can never be
+;; mistaken for a keyword.
+(define-peg-pattern keyword-key all
+                    (+ (and (not-followed-by (or ws nl ":")) peg-any)))
+(define-peg-pattern keyword-value all
+                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern keyword-lead none "#+")
+(define-peg-pattern keyword-colon none ":")
+(define-peg-pattern keyword all
+                    (and lead-ws
+                         keyword-lead
+                         keyword-key
+                         keyword-colon
+                         lead-ws
+                         keyword-value
+                         eol))
+
+;; Lines beginning with `#' (but not `#+') are comments and are not exported.
+(define-peg-pattern comment-content all
+                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern comment-hash none "#")
+(define-peg-pattern comment-line all
+                    (and lead-ws
+                         comment-hash
+                         (not-followed-by "+")
+                         (or sep-ws (followed-by eol))
+                         comment-content
+                         eol))
+
+;; Lines beginning with `: ' are fixed-width textual lines.
+(define-peg-pattern fixed-width-content all
+                    (* (and (not-followed-by eol) peg-any)))
+(define-peg-pattern fixed-width-colon none ":")
+(define-peg-pattern fixed-width all
+                    (and lead-ws
+                         fixed-width-colon
+                         (or sep-ws (followed-by eol))
+                         fixed-width-content
+                         eol))
+
 ;; ======================================================================
 ;; Paragraphs
 ;; ======================================================================
@@ -266,16 +344,22 @@
 ;; Inline Org Markup
 ;; =====================================================================
 
+(define-peg-pattern escape-backslash none "\\")
+(define-peg-pattern inline-escape-char all
+                    (or "*"
+                        "/"
+                        "_"
+                        "~"
+                        "="
+                        "+"
+                        "^"
+                        "{"
+                        "}"
+                        "["
+                        "]"
+                        "\\"))
 (define-peg-pattern inline-escape body
-                    (and "\\"
-                         (or "*"
-                             "/"
-                             "_"
-                             "~"
-                             "="
-                             "["
-                             "]"
-                             "\\")))
+                    (and escape-backslash inline-escape-char))
 
 (define-inline-markup inline-code inline-code-delimiter inline-code-body
                       inline-code-content "~")
@@ -287,7 +371,52 @@
                       inline-bold-content "*")
 (define-inline-markup inline-underline inline-underline-delimiter
                       inline-underline-body inline-underline-content "_")
+(define-inline-markup inline-strike inline-strike-delimiter
+                      inline-strike-body inline-strike-content "+")
 
+;; Superscript and subscript, in their unambiguous braced form
+;; (`x^{2}` and `x_{i}`).  The bare forms (`x^2`) are intentionally not
+;; recognised so that they never conflict with emphasis markers.
+(define-peg-pattern mark-caret none "^")
+(define-peg-pattern mark-underscore none "_")
+(define-peg-pattern mark-brace-open none "{")
+(define-peg-pattern mark-brace-close none "}")
+(define-peg-pattern inline-superscript-content all
+                    (+ (and (not-followed-by "}") peg-any)))
+(define-peg-pattern inline-superscript body
+                    (and mark-caret mark-brace-open
+                         inline-superscript-content mark-brace-close))
+(define-peg-pattern inline-subscript-content all
+                    (+ (and (not-followed-by "}") peg-any)))
+(define-peg-pattern inline-subscript body
+                    (and mark-underscore mark-brace-open
+                         inline-subscript-content mark-brace-close))
+
+;; A forced line break is `\\' at the end of a line (trailing whitespace is
+;; allowed).  Everywhere else `\\' is an escaped backslash, handled by
+;; `inline-escape'.
+(define-peg-pattern inline-line-break all
+                    (and "\\\\"
+                         (or (followed-by (+ ws))
+                             (not-followed-by peg-any))))
+
+;; Footnotes: inline `[fn::def]', reference `[fn:label]' and
+;; definition `[fn:label:def]'.
+(define-peg-pattern footnote-label all
+                    (+ (and (not-followed-by (or "]" ":" nl)) peg-any)))
+(define-peg-pattern footnote-content all
+                    (* (and (not-followed-by "]") peg-any)))
+(define-peg-pattern fn-open none "[fn:")
+(define-peg-pattern fn-open-inline none "[fn::")
+(define-peg-pattern fn-close none "]")
+(define-peg-pattern fn-colon none ":")
+(define-peg-pattern inline-footnote-inline all
+                    (and fn-open-inline footnote-content fn-close))
+(define-peg-pattern inline-footnote-def all
+                    (and fn-open footnote-label fn-colon
+                         footnote-content fn-close))
+(define-peg-pattern inline-footnote-ref all
+                    (and fn-open footnote-label fn-close))
 (define-peg-pattern link-open none "[[")
 (define-peg-pattern link-close none "]]")
 (define-peg-pattern link-sep none "][")
@@ -327,7 +456,11 @@
                          (+ (and (not-followed-by (or ws nl)) peg-any))))
 
 (define-peg-pattern inline-special body
-                    (or inline-escape
+                    (or inline-line-break
+                        inline-escape
+                        inline-footnote-inline
+                        inline-footnote-def
+                        inline-footnote-ref
                         inline-link-with-desc
                         inline-link-no-desc
                         inline-raw-url
@@ -335,7 +468,10 @@
                         inline-verbatim
                         inline-italic
                         inline-bold
-                        inline-underline))
+                        inline-underline
+                        inline-strike
+                        inline-superscript
+                        inline-subscript))
 
 (define-peg-pattern inline-text all
                     (+ (and (not-followed-by (or inline-special eol)) peg-any)))
@@ -349,15 +485,106 @@
 ;; Helpers
 ;; =====================================================================
 
+(define org-todo-keywords
+  ;; The TODO keywords recognised at the start of a heading.  Org lets these be
+  ;; customised per document; this is the common default set.
+  '("TODO" "DONE" "NEXT" "WAIT" "WAITING" "HOLD" "HOLDING" "STARTED"
+    "CANCELLED" "CANCELED" "IDEA" "NOTE" "FIXME" "PROJ" "IN-PROGRESS"))
+
+(define (trim-whitespace str)
+  "Return @var{str} without leading or trailing spaces and tabs."
+  (let ((n (string-length str)))
+    (let skip-leading ((i 0))
+      (if (and (< i n)
+               (or (char=? (string-ref str i) #\space)
+                   (char=? (string-ref str i) #\tab)))
+          (skip-leading (+ i 1))
+          (let skip-trailing ((j n))
+            (if (and (> j i)
+                     (or (char=? (string-ref str (- j 1)) #\space)
+                         (char=? (string-ref str (- j 1)) #\tab)))
+                (skip-trailing (- j 1))
+                (substring str i j)))))))
+
+(define (last-whitespace-index str)
+  "Return the index of the last space or tab in @var{str}, or @code{#f}."
+  (let loop ((i (- (string-length str) 1)))
+    (cond ((< i 0) #f)
+          ((or (char=? (string-ref str i) #\space)
+               (char=? (string-ref str i) #\tab)) i)
+          (else (loop (- i 1))))))
+
+(define (tag-character? c)
+  "Return @code{#t} when @var{c} may appear inside an Org tag."
+  (or (char-alphabetic? c)
+      (char-numeric? c)
+      (memv c (list #\_ #\@ #\# #\% #\-))))
+
+(define (parse-tags str)
+  "Return the list of tags in @var{str} when it looks like @code{:a:b:}.
+Returns @code{#f} otherwise, so a title that merely ends with a colon is not
+mistaken for a tag group."
+  (and (> (string-length str) 2)
+       (char=? (string-ref str 0) #\:)
+       (char=? (string-ref str (- (string-length str) 1)) #\:)
+       (let ((inner (substring str 1 (- (string-length str) 1))))
+         (and (not (string-null? inner))
+              (let ((parts (string-split inner #\:)))
+                (and (every (lambda (part)
+                              (and (not (string-null? part))
+                                   (every tag-character? (string->list part))))
+                            parts)
+                     parts))))))
+
+(define (parse-heading text)
+  "Split the text of a heading @var{text} into its structural parts.
+Returns four values: the TODO keyword, the priority, the title proper and the
+list of tags.  Any of the first two may be @code{#f} and the tag list may be
+empty."
+  (let* ((trimmed (trim-whitespace text))
+         (tags (let ((wi (last-whitespace-index trimmed)))
+                 (and wi
+                      (parse-tags (substring trimmed (+ wi 1) (string-length trimmed))))))
+         (body (if tags
+                   (trim-whitespace (substring trimmed 0 (last-whitespace-index trimmed)))
+                   trimmed))
+         (todo (let ((sp (string-index body #\space)))
+                 (and sp
+                      (let ((first (substring body 0 sp)))
+                        (and (member first org-todo-keywords) first)))))
+         (after-todo (if todo
+                         (trim-whitespace (substring body (string-length todo)))
+                         body))
+         (priority-close (and (>= (string-length after-todo) 3)
+                              (string-prefix? "[#" after-todo)
+                              (string-index after-todo #\])))
+         (priority (and priority-close
+                        (substring after-todo 2 priority-close)))
+         (title (if priority
+                    (trim-whitespace (substring after-todo (+ priority-close 1)))
+                    after-todo)))
+    (values todo priority title (or tags '()))))
+
 (define (process-ast ast)
   "Recursively process the Abstract Syntax Tree @var{ast} generated by the PEG parser.
 This function traverses the tree and restructures flat list nodes
 (such as @code{unordered-list}, @code{ordered-list}, and @code{description-list})
-into properly nested list trees by invoking @code{build-list-tree}."
+into properly nested list trees by invoking @code{build-list-tree}.  Headings
+are split into their TODO keyword, priority and tags so renderers need not know
+about Org's heading syntax."
   (match ast
     (((and list-type (or (quote unordered-list) (quote ordered-list) (quote description-list))) . items)
      (cons list-type
            (car (build-list-tree items 0))))
+    (('heading (? string? stars) ('line-content text))
+     (call-with-values (lambda ()
+                         (parse-heading text))
+       (lambda (todo priority title tags)
+         `(heading ,stars
+                   ,@(if todo (list `(heading-todo ,todo)) '())
+                   ,@(if priority (list `(heading-priority ,priority)) '())
+                   (line-content ,title)
+                   ,@(if (null? tags) '() (list (cons 'heading-tags tags)))))))
     ((node-type . children) (if (list? children)
                                 (cons node-type
                                       (map process-ast children)) ast))

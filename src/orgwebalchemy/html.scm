@@ -20,6 +20,7 @@
   #:use-module (ice-9 match)
   #:use-module (ice-9 peg)
   #:use-module (ice-9 pretty-print)
+  #:use-module (ice-9 regex)
   #:use-module (srfi srfi-1)
   #:use-module (sxml simple)
   #:use-module (orgwebalchemy peg)
@@ -52,7 +53,15 @@
                              table-header-row-classes
                              table-header-cell-classes
                              table-row-classes
-                             table-cell-classes))
+                             table-cell-classes
+                             strike-classes
+                             superscript-classes
+                             subscript-classes
+                             keyword-classes
+                             fixed-width-classes
+                             verse-block-classes
+                             center-block-classes
+                             checkbox-classes))
 
 ;; =======================================================================
 ;; Helpers & Utilities
@@ -116,6 +125,29 @@ preserving raw HTML nodes."
 
 ;;; Inline Org -> SXML Transformation
 
+(define (split-checkbox text)
+  "Return @code{(state . rest)} when @var{text} starts with an Org checkbox.
+@var{state} is @code{#t} for `[X] '/`[x] ' and @code{#f} for `[ ] '; @var{rest}
+is the item text with the checkbox removed.  Returns @code{#f} when @var{text}
+is not a checkbox item."
+  (match (string-match "^\\[([ xX])\\][[:space:]]+" text)
+    (#f #f)
+    (m (cons (let ((c (match:substring m 1)))
+               (or (string=? c "x") (string=? c "X")))
+             (substring text (match:end m 0))))))
+
+(define (render-checkbox checkbox)
+  "Return a list holding an SXML checkbox input for @var{checkbox}, or '().
+@var{checkbox} is the value produced by @code{split-checkbox}."
+  (if (not checkbox)
+      '()
+      (list `(input ,@(make-sxml-attrs
+                       (checkbox-classes)
+                       (append '((type "checkbox") (disabled "disabled"))
+                               (if (car checkbox)
+                                   '((checked "checked"))
+                                   '())))))))
+
 (define (inline-org->sxml ast)
   "Convert an inline Org AST into a list of SXML nodes."
   (define (render node)
@@ -152,6 +184,49 @@ preserving raw HTML nodes."
       (('inline-underline-content text)
        `(u ,@(make-sxml-attrs (underline-classes))
            ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; +strikethrough+
+      (('inline-strike-content text)
+       `(del ,@(make-sxml-attrs (strike-classes))
+             ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; x^{superscript}
+      (('inline-superscript-content text)
+       `(sup ,@(make-sxml-attrs (superscript-classes))
+             ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; x_{subscript}
+      (('inline-subscript-content text)
+       `(sub ,@(make-sxml-attrs (subscript-classes))
+             ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; An escaped markup character, emitted literally.
+      (('inline-escape-char text)
+       text)
+
+      ;; Forced line break.
+      (('inline-line-break _)
+       '(br))
+
+      ;; [fn:label]
+      (('inline-footnote-ref ('footnote-label label))
+       `(sup ,@(make-sxml-attrs '("footnote-ref"))
+             (a (@ (href ,(format #f "#fn-~a" label))
+                   (id ,(format #f "fnref-~a" label)))
+                ,label)))
+
+      ;; [fn:label: definition]
+      (('inline-footnote-def ('footnote-label label)
+        ('footnote-content definition))
+       `(span ,@(make-sxml-attrs '("footnote-def")
+                                 `((id ,(format #f "fn-~a" label))))
+              (sup ,@(make-sxml-attrs '("footnote-label")) ,label)
+              ,definition))
+
+      ;; [fn::inline definition]
+      (('inline-footnote-inline ('footnote-content definition))
+       `(sup ,@(make-sxml-attrs '("footnote-inline"))
+             ,definition))
 
       ;; [[URL][description]]
       (('inline-link-with-desc ('link-target-content url)
@@ -206,14 +281,47 @@ preserving raw HTML nodes."
     (match node
       
       ;; Headings
-      (('heading (? string? s)
-        ('line-content text))
+      (('heading (? string? s) . children)
        (let* ((lvl (string-length s))
               (tag (string->symbol (format #f "h~a" lvl)))
-              (classes ((heading-classes)
-                        lvl)))
+              (todo (any (lambda (c)
+                           (match c
+                             (('heading-todo x) x)
+                             (_ #f))) children))
+              (priority (any (lambda (c)
+                               (match c
+                                 (('heading-priority x) x)
+                                 (_ #f))) children))
+              (tags (append-map (lambda (c)
+                                  (match c
+                                    (('heading-tags xs ...) xs)
+                                    (_ '()))) children))
+              (text (any (lambda (c)
+                           (match c
+                             (('line-content x) x)
+                             (_ #f))) children))
+              (classes (append ((heading-classes) lvl)
+                               (if todo
+                                   (list "org-todo"
+                                         (format #f "org-todo-~a"
+                                                 (string-downcase todo)))
+                                   '()))))
          `(,tag ,@(make-sxml-attrs classes)
-           ,@(inline-org->sxml (inline-org->ast text)))))
+                ,@(if todo
+                      (list `(span ,@(make-sxml-attrs '("org-todo")) ,todo))
+                      '())
+                ,@(if priority
+                      (list `(span ,@(make-sxml-attrs '("org-priority"))
+                                   ,(format #f "[#~a]" priority)))
+                      '())
+                ,@(inline-org->sxml (inline-org->ast (or text "")))
+                ,@(if (null? tags)
+                      '()
+                      (list `(span ,@(make-sxml-attrs '("org-tags"))
+                                   ,@(map (lambda (t)
+                                            `(span ,@(make-sxml-attrs '("org-tag"))
+                                                   ,t))
+                                          tags)))))))
 
       ;; Horizontal Separator
       (('separator sep-content)
@@ -249,9 +357,12 @@ preserving raw HTML nodes."
                             (match li
                               (('unordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,@(make-sxml-attrs (unordered-list-item-classes))
-                                    ,@(inline-org->sxml (inline-org->ast text))
-                                    ,@(org-ast->sxml sub-nodes)))
+                               (let* ((checkbox (split-checkbox text))
+                                      (body (if checkbox (cdr checkbox) text)))
+                                 `(li ,@(make-sxml-attrs (unordered-list-item-classes))
+                                      ,@(render-checkbox checkbox)
+                                      ,@(inline-org->sxml (inline-org->ast body))
+                                      ,@(org-ast->sxml sub-nodes))))
                               (_ #f))) items)))
 
       ;; Ordered lists
@@ -261,15 +372,52 @@ preserving raw HTML nodes."
                             (match li
                               (('ordered-item ('line-content text) sub-nodes
                                 ...)
-                               `(li ,@(make-sxml-attrs (ordered-list-item-classes))
-                                    ,@(inline-org->sxml (inline-org->ast text))
-                                    ,@(org-ast->sxml sub-nodes)))
+                               (let* ((checkbox (split-checkbox text))
+                                      (body (if checkbox (cdr checkbox) text)))
+                                 `(li ,@(make-sxml-attrs (ordered-list-item-classes))
+                                      ,@(render-checkbox checkbox)
+                                      ,@(inline-org->sxml (inline-org->ast body))
+                                      ,@(org-ast->sxml sub-nodes))))
                               (_ #f))) items)))
 
       ;; Paragraph
       (('paragraph ('line-content text))
        `(p ,@(make-sxml-attrs (paragraph-classes))
            ,@(inline-org->sxml (inline-org->ast text))))
+
+      ;; In-buffer keyword / metadata, e.g. #+TITLE: Hello
+      (('keyword ('keyword-key key)
+        ('keyword-value value))
+       `(div ,@(make-sxml-attrs (keyword-classes))
+             ,(format #f "~a: ~a" key value)))
+
+      ;; A single commented line.
+      (('comment-line ('comment-content text))
+       `(raw-html ,(format #f "<!-- ~a -->" text)))
+
+      ;; A commented block.
+      (('comment-block ('comment-block-content text))
+       `(raw-html ,(format #f "<!-- ~a-->" text)))
+
+      ;; Fixed-width line.
+      (('fixed-width ('fixed-width-content text))
+       `(pre ,@(make-sxml-attrs (fixed-width-classes))
+             ,(string-append text "\n")))
+
+      ;; Verse block: literal lines joined by forced line breaks.
+      (('verse-block ('verse-content text))
+       (let ((lines (string-split (string-trim-right text (lambda (c) (char=? c #\newline))) #\newline)))
+         `(p ,@(make-sxml-attrs (verse-block-classes))
+             ,@(let loop ((ls lines))
+                 (cond ((null? ls) '())
+                       ((null? (cdr ls)) (list (car ls)))
+                       (else (cons (car ls)
+                                   (cons '(br) (loop (cdr ls))))))))))
+
+      ;; Center block: contents are ordinary Org, centred in HTML.
+      (('center-block ('center-content text))
+       `(div ,@(make-sxml-attrs (center-block-classes))
+             (p ,@(inline-org->sxml (inline-org->ast (string-trim-right text (lambda (c) (char=? c #\newline))))))))
 
       ;; Source block
       (('src-block ('lang l)
@@ -443,4 +591,28 @@ preserving raw HTML nodes."
   (make-parameter '()))
 
 (define ordered-list-item-classes
+  (make-parameter '()))
+
+(define strike-classes
+  (make-parameter '()))
+
+(define superscript-classes
+  (make-parameter '()))
+
+(define subscript-classes
+  (make-parameter '()))
+
+(define keyword-classes
+  (make-parameter '()))
+
+(define fixed-width-classes
+  (make-parameter '()))
+
+(define verse-block-classes
+  (make-parameter '()))
+
+(define center-block-classes
+  (make-parameter '()))
+
+(define checkbox-classes
   (make-parameter '()))
