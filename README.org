@@ -7,8 +7,7 @@
 #+description: A Guile Scheme library that parses Org-mode with a PEG grammar and renders clean HTML, Markdown, or SXML.
 #+keywords: Org-mode, Guile Scheme, PEG, HTML, Markdown, static site generator, free software
 
--[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
--[[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]   [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
 #+begin_quote
 *Org-mode in. HTML and Markdown out.*
