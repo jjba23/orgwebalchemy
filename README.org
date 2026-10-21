@@ -7,16 +7,8 @@
 #+description: A Guile Scheme library that parses Org-mode with a PEG grammar and renders clean HTML, Markdown, or SXML.
 #+keywords: Org-mode, Guile Scheme, PEG, HTML, Markdown, static site generator, free software
 
-[[https://codeberg.org/jjba23/orgwebalchemy][https://img.shields.io/badge/Codeberg-orgwebalchemy-2185d0.svg?logo=codeberg&logoColor=white]]
-[[https://codeberg.org/jjba23/orgwebalchemy][https://codeberg.org/jjba23/orgwebalchemy/badges/stars.svg]]
-[[https://codeberg.org/jjba23/orgwebalchemy/issues][https://codeberg.org/jjba23/orgwebalchemy/badges/issues.svg]]
-[[https://www.gnu.org/software/guile/][https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]]
-[[https://guix.gnu.org/][https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
-
-[[https://www.gnu.org/licenses/lgpl-3.0.html][https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]
-[[https://www.gnu.org/licenses/fdl-1.3.html][https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
-[[https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html][https://img.shields.io/badge/docs-API-green.svg]]
-[[https://codeberg.org/jjba23/veritas][https://img.shields.io/badge/tests-Veritas-blueviolet.svg]]
+-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
+-[[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
 #+begin_quote
 *Org-mode in. HTML and Markdown out.*
