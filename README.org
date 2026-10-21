@@ -1,53 +1,125 @@
 #+title: OrgWebAlchemy
+#+subtitle: A Guile Scheme library for Org-mode
 #+author: Josep Bigorra
 #+email: jjbigorra@gmail.com
 #+language: en
 #+options: toc:nil num:nil
+#+description: A Guile Scheme library that parses Org-mode with a PEG grammar and renders clean HTML, Markdown, or SXML.
+#+keywords: Org-mode, Guile Scheme, PEG, HTML, Markdown, static site generator, free software
 
+[[https://codeberg.org/jjba23/orgwebalchemy][https://img.shields.io/badge/Codeberg-orgwebalchemy-2185d0.svg?logo=codeberg&logoColor=white]]
+[[https://codeberg.org/jjba23/orgwebalchemy][https://codeberg.org/jjba23/orgwebalchemy/badges/stars.svg]]
+[[https://codeberg.org/jjba23/orgwebalchemy/issues][https://codeberg.org/jjba23/orgwebalchemy/badges/issues.svg]]
+[[https://www.gnu.org/software/guile/][https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]]
+[[https://guix.gnu.org/][https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]
-[[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+[[https://www.gnu.org/licenses/lgpl-3.0.html][https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]
+[[https://www.gnu.org/licenses/fdl-1.3.html][https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+[[https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html][https://img.shields.io/badge/docs-API-green.svg]]
+[[https://codeberg.org/jjba23/veritas][https://img.shields.io/badge/tests-Veritas-blueviolet.svg]]
 
-Parse Org-mode documents and convert them with a flexible Lisp (Guile Scheme) library.
+#+begin_quote
+*Org-mode in. HTML and Markdown out.*
 
-If you like my work, please support me by [[https://bmc.link/jjbigorra][buying me a cup of coffee ☕]] so I can continue with a lot of motivation.
+OrgWebAlchemy is a small, dependency-light [[https://www.gnu.org/software/guile/][Guile Scheme]] library that parses Org-mode documents with a real [[https://en.wikipedia.org/wiki/Parsing_expression_grammar][PEG grammar]] and renders them to clean *HTML*, *Markdown*, or *SXML*. Write your notes, documentation, or blog in Org; publish them from Scheme, with the structure and the CSS you want.
+#+end_quote
 
-You can find the technical Guile Scheme API documentation for OrgWebAlchemy here:
+#+caption: One Org document, rendered by both renderers. Generated from [[file:examples/hello.org][examples/hello.org]] with [[file:examples/demo.scm][examples/demo.scm]].
+#+attr_html: :width 100%
+[[file:assets/orgwebalchemy-demo.gif]]
+
+- *What it is* :: a parser and a pair of renderers for Org-mode, written in Guile Scheme and built around a Parsing Expression Grammar.
+- *Who it is for* :: Scheme hackers, static-site authors, wiki and notebook builders, tool makers, and anyone who keeps writing in Org but wants to publish with a library instead of an Emacs export.
+- *Why you will like it* :: it understands real Org rather than a regex-shaped subset, it gives every renderer the same AST, and it lets your CSS classes -- not ours -- decide how the output looks.
+- *Freedom* :: LGPL-3.0-or-later for the code, FDL-1.3-or-later for this documentation. No account, no telemetry, no build service required.
+
+*Jump to:* [[#installation][Installation]] · [[#quick-start][Quick start]] · [[#configuration][Configuration]] · [[#supported-org-features][Supported features]] · [[#api-overview][API]] · [[#how-it-works][How it works]] · [[#benchmarks][Benchmarks]] · [[#contributing][Contributing]]
+
+The short version, if you already have Guile and this checkout on your load path:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy html)
+             (orgwebalchemy markdown))
+
+(org->html "This is ~test~ code.")
+;; => "This is <code>test</code> code."
+
+(org->markdown "This is ~test~ code.")
+;; => "This is `test` code."
+#+end_src
+
+And the full technical API documentation lives here:
 
 https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
 
-------------------------
+---------------------
 
-* What OrgWebAlchemy gives you
+* Why OrgWebAlchemy?
+:PROPERTIES:
+:CUSTOM_ID: why-orgwebalchemy
+:END:
 
-This package provides among others the ~org->html~ and ~org->markdown~ functions,
-turning Org-mode into either HTML or Markdown.
+Org mode is a wonderful place to write. It is a less wonderful thing to parse.
 
-See the [[file:test/][tests of this library]] to understand better how to use it. This library also exposes multiple parameters which can be used to customize behavior and final result (CSS classes for example).
+A real Org document is not a pile of lines that each match a regular expression. It has nested lists, source blocks, description lists, links whose meaning depends on their target, inline markup with escaping rules, and constructs that end only when the surrounding context says they end. Tools built from regex substitutions tend to accumulate special cases until the regexes describe the bugs in the parser rather than the language.
 
-In a simplified way:
+OrgWebAlchemy takes a different route:
 
-#+begin_src scheme
-(use-modules (orgwebalchemy html))
-(org->html "This is ~test~ code.")
-;; results in:
-;; "This is <code>test</code> code."
-#+end_src
+#+begin_example
+Org text
+   |
+   v
+ PEG grammar
+   |
+   v
+ AST
+   |        |
+   v        v
+ HTML     Markdown
+ renderer renderer
+#+end_example
 
-And for Markdown:
+The grammar describes the language. The parser produces a structured tree. The renderers turn that tree into output. Syntax stays in the parser and presentation stays in the renderers, which is why the HTML and Markdown back ends can agree about what a link, a figure, or a heading means.
 
-#+begin_src scheme
-(use-modules (orgwebalchemy markdown))
-(org->markdown "This is ~test~ code.")
-;; results in:
-;; "This is `test` code."
-#+end_src
+Here is what that buys you, depending on what you are building:
 
----------------------------------
+| If you want to...                              | Reach for...                                            |
+|------------------------------------------------+---------------------------------------------------------|
+| Turn an Org string into an HTML fragment       | ~org->html~                                             |
+| Turn an Org string into Markdown               | ~org->markdown~                                         |
+| Parse once and render more than once           | ~org->ast~, then ~org-ast->html~ or ~org-ast->markdown~ |
+| Post-process the document tree with SXML       | ~org->sxml~, ~org-ast->sxml~                            |
+| Style every element for your design system     | the HTML class parameters                               |
+| Embed Org rendering in a static site generator | the three modules below                                 |
+| Understand how the parser works                | [[#how-it-works][the PEG section]]                      |
 
-[[https://jointhefreeworld.org/static-assets/orgwebalchemy/screen-2026-09-24-11-21-12.png]]
+OrgWebAlchemy is a library, not an application. It has no opinion about your web framework, your static-site generator, your templating language, or your CSS. It gives you a correct tree and clean output; the rest is yours.
 
----------------------------------
+---------------------
+
+* Features
+:PROPERTIES:
+:CUSTOM_ID: features
+:END:
+
+- *One parser, two renderers* :: ~org->html~ and ~org->markdown~ are built on the same parsed AST. They cannot drift apart on what a link target, a heading anchor, a figure, or a named element means.
+- *A real AST* :: ~org->ast~ returns a tree of nodes, not a string that needs to be reparsed. Inspect it, transform it, or render it yourself.
+- *HTML with class hooks everywhere* :: every element the HTML renderer emits takes its CSS classes from a Guile parameter. Bootstrap, Tailwind, Bulma, hand-written CSS -- your call.
+- *Markdown without hand-waving* :: underlines, superscripts, subscripts, description lists, and footnotes fall back to inline HTML or the Markdown conventions that preserve their meaning.
+- *Links that know where they go* :: link targets are classified once, in the parser: external URLs, ~file:~ links, bare paths, ~#custom-id~ links, ~*Heading~ links, image links, and ~::search~ suffixes.
+- *Figures and named elements* :: ~#+CAPTION:~ and ~#+NAME:~ make figures and addressable elements; ~[[fig:name]]~, ~[[tbl:name]]~, and bare-name links resolve to them in both renderers.
+- *Org, not a toy subset* :: headings with TODO keywords, priorities and tags; nested mixed lists; checkboxes; tables with empty cells; source, example, quote, verse, center and export blocks; footnotes; fixed-width lines; separators; comments; and more.
+- *SXML when you need it* :: ~org->sxml~ and ~org-ast->sxml~ let you post-process the tree with ~(sxml simple)~ or any SXML tool you already use.
+- *Small footprint* :: no runtime dependencies beyond Guile's standard library. The whole library is three modules.
+- *Tested and measured* :: unit suites cover the grammar and both renderers; equivalence checks compare parser revisions over tens of thousands of inputs; benchmarks track parse and render cost.
+- *Free software* :: LGPL-3.0-or-later. Use it in free and non-free programs, improve it, share it.
+
+---------------------
+
+* How it works: parsing Org with PEG
+:PROPERTIES:
+:CUSTOM_ID: how-it-works
+:END:
 
 ** What is a PEG? (Parsing Expression Grammars)
 
@@ -95,7 +167,7 @@ we describe the structure of the language:
 paragraph, a list item, a source block, or another construct."
 #+end_quote
 
-The grammar becomes executable and testable documentation. This is also thanks to Guile Scheme's great ~(ice-9 peg)~ implementation, which supports traditional formal PEG syntax, but also PEG as S-expressions. Similar things can be achieved in other technologies and implementations, but I argue that not in such elegant fashion.
+The grammar becomes executable and testable documentation. This is also thanks to Guile Scheme's great ~(ice-9 peg)~ implementation, which supports traditional formal PEG syntax, but also PEG as S-expressions. Other technologies and implementations can achieve similar things, but not, I would argue, with the same elegance.
 
 For example, a simplified grammar can express the structure directly:
 
@@ -226,8 +298,7 @@ inline content
 The block parser does not need to understand every inline construct.
 Likewise, the inline parser does not need to understand headings or lists.
 
-This gives us small, composable grammars instead of one enormous regular
-expression.
+This gives us small, composable grammars instead of one enormous regular expression.
 
 ** PEG is not magic
 
@@ -236,8 +307,6 @@ Using PEG does not mean that Org mode suddenly becomes easy to parse.
 Org is a large language with many historical conventions, and =orgwebalchemy= does its best to comply.
 
 The important difference is that when the grammar grows, we can extend the grammar itself rather than adding another pile of increasingly fragile regular-expression substitutions.
-
----------
 
 ** Why not just use regex?
 
@@ -250,8 +319,7 @@ They are excellent for small, local lexical problems:
 - finding a simple pattern;
 - processing already-tokenized data.
 
-The problem starts when regular expressions are used as a substitute for a
-parser.
+The problem starts when regular expressions are used as a substitute for a parser.
 
 Once the language contains nesting, alternatives, boundaries, context,
 escaping, and multiple interacting constructs, a collection of regexes
@@ -276,64 +344,16 @@ PEGs are great at describing a language.
 
 And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
---------------
+---------------------
 
-* The library API
+* Configuration
+:PROPERTIES:
+:CUSTOM_ID: configuration
+:END:
 
-OrgWebAlchemy is three small modules.  Each builds on the one before it, so you
-only pull in what you need.
+** Styling HTML with class parameters
 
-** ~(orgwebalchemy peg)~ — the parser
-
-The parser turns Org text into an AST and knows nothing about HTML or Markdown.
-
-- ~(org->ast str)~ :: parse a whole document.  A single top-level element comes
-  back as that element's node; several come back as a list of nodes.
-- ~(inline-org->ast str)~ :: parse one line of inline markup.
-
-The parser also owns everything that is true about an Org *link target*, so
-that the HTML and Markdown renderers never have to guess:
-
-- ~(org-link-parts target)~ :: ~(protocol . path)~ for a link target.
-- ~(org-link-protocol target)~, ~(org-link-path target)~,
-  ~(org-link-search target)~ :: the pieces of that pair.
-- ~(org-image-link? target)~ :: is this target an image file or a ~data:image~ URI?
-- ~(org-link-href target)~ :: the href the target should point at.
-- ~(org-link-display target)~ :: the text Org shows for a link with no description.
-- ~(org-anchor text)~ :: the URL fragment a heading (and a ~*Heading~ link) uses.
-- ~(figure-parts node)~ :: ~(name caption target description)~ for a figure
-  node, with ~#f~ for every part the figure does not have.
-- ~(named-parts node)~ :: ~(name element)~ for an element a ~#+NAME:~ line
-  names.
-- ~(document-names ast)~ :: the names the elements of a parsed document carry,
-  which is what a link is resolved against.
-- ~(element-names names)~ :: the parameter holding those names while a document
-  is parsed, which ~inline-org->ast~ resolves a bare link target against.  The
-  two renderers bind it for the length of a document, so the resolution belongs
-  to the parser and neither renderer has to know a name list exists.
-
-** ~(orgwebalchemy html)~ — rendering to HTML
-
-- ~(org->html str)~ :: Org text to an HTML fragment.
-- ~(org->sxml str)~, ~(org-ast->sxml ast)~ :: Org to SXML, when you want to
-  post-process the tree with ~(sxml simple)~.
-- ~(org-ast->html ast)~ :: a parsed document AST to an HTML fragment.
-- ~(inline-org->html ast)~, ~(inline-org->sxml ast)~ :: inline markup only.
-- ~(sxml->html-string sxml)~ :: the small SXML serialiser the library uses.
-- ~(heading-id text)~ :: the ~((id ...))~ attributes a heading title gets, or
-  ~()~ when the title holds nothing an anchor could be made of.
-
-** ~(orgwebalchemy markdown)~ — rendering to Markdown
-
-- ~(org->markdown str)~ :: Org text to Markdown.
-- ~(org-ast->markdown ast)~ :: a parsed document AST to Markdown.
-- ~(inline-org->markdown ast)~ :: inline markup only.
-
-** Customising the HTML output
-
-Every element the HTML renderer produces reads its CSS classes from a Guile
-parameter, so one document can be styled for any design system without touching
-the parser:
+The HTML renderer emits semantic elements with no styles attached. Every element reads its CSS classes from a Guile parameter, so one document can be styled for any design system without touching the parser:
 
 #+begin_src scheme
 (use-modules (orgwebalchemy html))
@@ -347,57 +367,62 @@ the parser:
                (paragraph-classes '("leading-relaxed" "mb-4"))
                (link-classes '("underline" "text-blue-600")))
   (org->html "This paragraph is *bold*.\n"))
+;; => "<p class=\"leading-relaxed mb-4\">This paragraph is <strong>bold</strong>.</p>"
 #+end_src
 
-The parameters are ~link-classes~, ~image-classes~, ~figure-classes~,
-~figure-caption-classes~, ~code-classes~,
-~code-block-classes~,
-~quote-block-classes~, ~example-block-classes~, ~italic-classes~,
-~bold-classes~, ~underline-classes~, ~strike-classes~, ~superscript-classes~,
-~subscript-classes~, ~separator-classes~, ~paragraph-classes~,
-~table-classes~ and its ~-header-row~, ~-header-cell~, ~-row~ and ~-cell~
-variants, ~description-list-classes~ with ~description-term-classes~ and
-~description-detail-classes~, ~unordered-list-classes~ with
-~unordered-list-item-classes~, ~ordered-list-classes~ with
-~ordered-list-item-classes~, ~checkbox-classes~, ~keyword-classes~,
-~fixed-width-classes~, ~verse-block-classes~, ~center-block-classes~ and
-~heading-classes~, which is special: it is a procedure of the heading level
-rather than a list, so each level can be styled on its own.
+Each parameter is a list of class-name strings, except ~heading-classes~, which is a procedure of the heading level so that each level can be styled on its own. Parameters are dynamic: use ~parameterize~ to scope a change to one render call, or set them once for your program.
 
-The Markdown renderer is deliberately not configurable: Markdown has no styling
-of its own.
+- *Inline* :: ~link-classes~, ~image-classes~, ~code-classes~, ~italic-classes~, ~bold-classes~, ~underline-classes~, ~strike-classes~, ~superscript-classes~, ~subscript-classes~.
+- *Blocks* :: ~paragraph-classes~, ~code-block-classes~, ~quote-block-classes~, ~example-block-classes~, ~verse-block-classes~, ~center-block-classes~, ~separator-classes~, ~keyword-classes~, ~fixed-width-classes~.
+- *Lists* :: ~unordered-list-classes~, ~unordered-list-item-classes~, ~ordered-list-classes~, ~ordered-list-item-classes~, ~description-list-classes~, ~description-term-classes~, ~description-detail-classes~, ~checkbox-classes~.
+- *Tables* :: ~table-classes~, ~table-header-row-classes~, ~table-header-cell-classes~, ~table-row-classes~, ~table-cell-classes~.
+- *Media* :: ~image-classes~, ~figure-classes~, ~figure-caption-classes~.
+- *Headings* :: ~heading-classes~ (a procedure of the heading level).
 
---------------
+All parameters are exported by ~(orgwebalchemy html)~ and default to the empty
+class list, except ~heading-classes~, whose default is a procedure that returns
+the empty list for every level.
+
+** What is deliberately not configurable
+
+The Markdown renderer has no class parameters: Markdown has no styling of its own. Its job is to preserve structure and meaning, falling back to inline HTML only where Markdown has no equivalent. Link classification, figure folding, and name resolution also live in the parser, so the two renderers always agree about them.
+
+** Heading anchors
+
+Every heading carries an ~id~, and a ~[[*Heading][link]]~ points at the same anchor. Both are produced by ~org-anchor~, so they cannot drift apart:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy html))
+
+(org->html "* My First Section\nSee [[*My First Section][up there]].\n")
+;; => "<h1 id=\"my-first-section\">My First Section</h1><p>See <a href=\"#my-first-section\">up there</a>.</p>"
+#+end_src
+
+A title with nothing anchor-worthy in it gets no ~id~ at all. ~heading-id~ is the helper that builds the attribute.
+
+---------------------
 
 * Supported Org features
+:PROPERTIES:
+:CUSTOM_ID: supported-org-features
+:END:
 
-- Headings (lines  starting by n ~*~), including an optional TODO keyword,
+Org is a large language. OrgWebAlchemy aims to handle the constructs people actually write, and to be honest about the edges it does not reach yet. The supported surface is:
+
+- *Block elements* :: headings, paragraphs, lists, tables, source/example/quote/verse/center/export blocks, comments, fixed-width lines, separators, keywords, footnotes.
+- *Inline markup* :: bold, italic, underline, strikethrough, inline code, verbatim, superscript, subscript, forced line breaks, escaped markup.
+- *Links and media* :: links with and without descriptions, bare URLs, image links, figures, named elements, ~file:~ and ~#custom-id~ targets, ~*Heading~ links, ~::search~ suffixes.
+- *Output* :: HTML fragments, SXML, Markdown, inline-only rendering, configurable CSS classes for HTML.
+
+** Block elements
+
+- Headings (lines starting with one or more ~*~), including an optional TODO keyword,
   priority (~[#A]~) and tags (~:tag1:tag2:~)
 - Paragraphs (any "non-special" text)
 - Unordered, Ordered and Description lists (with any level of nesting), with
   checkbox items (~- [ ]~ and ~- [X]~).  The three kinds may be mixed freely:
   one list may change its bullet type part-way through, and a nested list may
   use a different kind from its parent
-- Italic, Bold, Underline, Strikethrough, Inline Code and Verbatim
-- Superscript and subscript in their braced form (~x^{2}~, ~H_{2}O~)
-- Forced line breaks (~\\~ at the end of a line) and escaped markup (~\*~)
-- Links with and without description (with nested parsing) and bare URLs.
-  Targets are classified once, in the parser, so ~file:~, ~#custom-id~ and
-  ~*Heading~ links all point somewhere real, and image links render as images
-  in both renderers (see *Links and images* below)
-- Figures: a ~#+CAPTION:~ or ~#+NAME:~ line before an image link makes one
-  figure, which HTML renders as ~<figure>~ with a ~<figcaption>~ and Markdown
-  as an image with its caption, and the name is the id a ~[[fig:name]]~
-  cross-reference link resolves to (see *Figures* below)
-- Named elements: a ~#+NAME:~ line before a table, a block, a list, a separator
-  or a paragraph is that element's id, and the ~[[name]]~ and ~[[tbl:name]]~
-  links to it resolve to it in both renderers (see *Named elements* below)
-- Footnotes: references (~[fn:label]~), definitions (~[fn:label: text]~) and
-  inline footnotes (~[fn::text]~)
-- Keywords and in-buffer settings (~#+TITLE: ...~, ~#+AUTHOR: ...~, ...)
-- Comments: single lines beginning with ~#~ and ~#+begin_comment~ blocks
-- Fixed-width lines (~: text~)
-- Horizontal separators (~--------~) five or more dashes
 - Tables, including empty cells: ~| a || b |~ is a row of three cells in both
   renderers, the middle one empty, and a line that is nothing but its closing
   bar (~|~ on its own) is a row of one empty cell
@@ -406,7 +431,21 @@ of its own.
 - ~#+begin_example~
 - ~#+begin_quote~ (with nested parsing)
 - ~#+begin_verse~ and ~#+begin_center~
-- ~#+begin_export html~ : Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output.
+- ~#+begin_export html~ : Org syntax is parsed by your PEG grammar, but raw HTML export blocks bypass the Org inline parser and are emitted as trusted literal output
+- Keywords and in-buffer settings (~#+TITLE: ...~, ~#+AUTHOR: ...~, ...)
+- Comments: single lines beginning with ~#~ and ~#+begin_comment~ blocks
+- Fixed-width lines (~: text~)
+- Horizontal separators (~--------~) five or more dashes
+- Footnotes: references (~[fn:label]~), definitions (~[fn:label: text]~) and
+  inline footnotes (~[fn::text]~)
+
+** Inline markup
+
+- Italic, Bold, Underline, Strikethrough, Inline Code and Verbatim
+- Superscript and subscript in their braced form (~x^{2}~, ~H_{2}O~)
+- Forced line breaks (~\\~ at the end of a line) and escaped markup (~\*~)
+- Links with and without description (with nested parsing) and bare URLs
+- Links to images, which render as images in both renderers
 
 ** Links and images
 
@@ -448,14 +487,14 @@ rendering needs:
 
 Both renderers then follow that single answer:
 
-| Org                          | HTML                                        | Markdown                                       |
-|------------------------------+---------------------------------------------+------------------------------------------------|
-| ~[[file:photo.png][a photo]]~ | ~<img src="photo.png" alt="a photo" />~      | ~![a photo](photo.png)~                        |
-| ~[[images/diagram.svg]]~      | ~<img src="images/diagram.svg" alt="..." />~ | ~![images/diagram.svg](images/diagram.svg)~    |
-| ~[[file:notes.org][notes]]~   | ~<a href="notes.org">notes</a>~             | ~[notes](notes.org)~                           |
-| ~[[#custom-id][there]]~       | ~<a href="#custom-id">there</a>~            | ~[there](#custom-id)~                          |
-| ~[[*My Section][up]]~         | ~<a href="#my-section">up</a>~              | ~[up](#my-section)~                            |
-| ~[[https://gnu.org][GNU]]~    | ~<a href="https://gnu.org">GNU</a>~         | ~[GNU](https://gnu.org)~                       |
+| Org                           | HTML                                         | Markdown                                    |
+|-------------------------------+----------------------------------------------+---------------------------------------------|
+| ~[[file:photo.png][a photo]]~ | ~<img src="photo.png" alt="a photo" />~      | ~![a photo](photo.png)~                     |
+| ~[[images/diagram.svg]]~      | ~<img src="images/diagram.svg" alt="..." />~ | ~![images/diagram.svg](images/diagram.svg)~ |
+| ~[[file:notes.org][notes]]~   | ~<a href="notes.org">notes</a>~              | ~[notes](notes.org)~                        |
+| ~[[#custom-id][there]]~       | ~<a href="#custom-id">there</a>~             | ~[there](#custom-id)~                       |
+| ~[[*My Section][up]]~         | ~<a href="#my-section">up</a>~               | ~[up](#my-section)~                         |
+| ~[[https://gnu.org][GNU]]~    | ~<a href="https://gnu.org">GNU</a>~          | ~[GNU](https://gnu.org)~                    |
 
 A heading link needs somewhere to land, so every heading carries its anchor as
 an ~id~:
@@ -510,8 +549,8 @@ an ordinary keyword line -- a ~#+CAPTION:~ in front of one of those describes an
 element this parser does not caption yet, while the ~#+NAME:~ in front of it is
 the *Named elements* case below.  Several ~#+CAPTION:~ lines join in document order,
 one ~#+NAME:~ line gives the figure its id, and ~figure-parts~ returns
-~(name caption target description)~ with ~#f~ for every part the figure does not
-have.  ~figure-classes~ and ~figure-caption-classes~ style the element.
+~(name caption target description)~ with ~#f~ for every part the figure does
+not have.  ~figure-classes~ and ~figure-caption-classes~ style the element.
 
 ** Named elements
 
@@ -607,9 +646,340 @@ way to keep their meaning:
 ;; "# Title\n\nSome **bold** text.\n\n"
 #+end_src
 
---------------------
+** Current limitations
+
+Org is large, and this parser does not claim to cover every historical convention.
+The known edges are:
+
+- Captions on tables, source blocks, and other non-figure elements are not
+  rendered yet; the ~#+CAPTION:~ line stays an ordinary keyword line. Figures
+  are the exception.
+- There is no incremental parse-and-render path yet. A changed document is
+  parsed from the beginning.
+- The benchmarks measure this implementation, not other Org implementations,
+  and do not compare against them.
+- OrgWebAlchemy is a library, not an Emacs package: it does not integrate with
+  Org's export dispatcher, agenda, or Babel.
+
+If one of these gets in your way, that is exactly the kind of issue worth reporting.
+See [[#contributing][Contributing]].
+
+---------------------
+
+* Requirements
+:PROPERTIES:
+:CUSTOM_ID: requirements
+:END:
+
+- *Guile 3.0 or newer.* The library uses Guile's ~(ice-9 peg)~ module and Guile 3 features such as declarative modules.
+- *No external runtime dependencies.* Everything else comes from Guile's standard library.
+- *Guix is recommended, but optional.* It is the easiest way to get a matching Guile, the test framework, and the documentation tools. The library itself works with any Guile 3 installation.
+- *For development:* [[https://codeberg.org/jjba23/veritas][Veritas]], ~guile-documenta~, Texinfo, ~watchexec~, and ~guile-ares-rs~. The included [[file:manifest.scm][manifest.scm]] provides all of them.
+
+The project is developed and tested on GNU/Linux. If you get it running elsewhere, a note in the issue tracker is welcome.
+
+---------------------
+
+* Installation
+:PROPERTIES:
+:CUSTOM_ID: installation
+:END:
+
+** The quickest path: a checkout and a Guix shell
+
+#+begin_src shell
+git clone https://codeberg.org/jjba23/orgwebalchemy.git
+cd orgwebalchemy
+guix shell -m manifest.scm -- guile -L ./src examples/demo.scm
+#+end_src
+
+That command renders [[file:examples/hello.org][examples/hello.org]] and prints both an HTML fragment and its Markdown equivalent. It is the same document you see in the animated demo above.
+
+If you already have Guile 3 and do not want a Guix shell, run the demo directly:
+
+#+begin_src shell
+guile -L ./src examples/demo.scm
+#+end_src
+
+** Use it in your own project
+
+*** With Guix
+
+OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwebalchemy~. Until then, the recipe below is self-contained and builds the current release. Save it as ~guile-orgwebalchemy.scm~:
+
+#+begin_src scheme
+(use-modules (guix packages)
+             (guix download)
+             (guix build-system guile)
+             (gnu packages guile)
+             ((guix licenses) #:prefix license:))
+
+(define-public guile-orgwebalchemy
+  (package
+    (name "guile-orgwebalchemy")
+    (version "1.2.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://codeberg.org/jjba23/orgwebalchemy/archive/v"
+             version ".tar.gz"))
+       (sha256
+        (base32 "1c4zik9dqwqc02mbls18qi9yrajjl2f9g9jybh6v79lg4zxhklv5"))))
+    (build-system guile-build-system)
+    (arguments
+     (list #:source-directory "src"))
+    (native-inputs (list guile-3.0))
+    (home-page "https://codeberg.org/jjba23/orgwebalchemy")
+    (synopsis "Convert Org markup to HTML and Markdown with Guile Scheme")
+    (description
+     "OrgWebAlchemy parses Org-mode documents with a PEG grammar and renders
+them to HTML, Markdown, or SXML.")
+    (license license:lgpl3+)))
+#+end_src
+
+Build it, or add it to your own channel:
+
+#+begin_src shell
+guix build -f guile-orgwebalchemy.scm
+#+end_src
+
+When you bump the version, refresh the hash with:
+
+#+begin_src shell
+guix download https://codeberg.org/jjba23/orgwebalchemy/archive/v1.2.0.tar.gz
+#+end_src
+
+Then use the package as you would any other Guix package. The simplest way is
+to put both files in the same directory and load the package definition from a
+manifest:
+
+#+begin_src scheme
+(use-modules (guix profiles)
+             (guix packages)
+             (gnu packages guile))
+
+(load "guile-orgwebalchemy.scm")
+
+(packages->manifest
+ (list guile-3.0 guile-orgwebalchemy))
+#+end_src
+
+#+begin_src shell
+guix shell -m manifest-with-orgwebalchemy.scm -- guile your-program.scm
+#+end_src
+
+If you maintain a Guix channel, add the package definition to it and use
+~guile-orgwebalchemy~ like any other package from that channel.
+
+*** Manually, with ~GUILE_LOAD_PATH~
+
+Clone the repository and point Guile at its ~src~ directory:
+
+#+begin_src shell
+git clone https://codeberg.org/jjba23/orgwebalchemy.git
+export GUILE_LOAD_PATH="$PWD/orgwebalchemy/src${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}"
+#+end_src
+
+Or pass the same directory on the command line, which keeps the change local to one program:
+
+#+begin_src shell
+guile -L /path/to/orgwebalchemy/src your-program.scm
+#+end_src
+
+*** Verify the installation
+
+#+begin_src shell
+guile -c '(use-modules (orgwebalchemy html)) (display (org->html "* It works!\n"))'
+#+end_src
+
+You should see:
+
+#+begin_src html
+<h1 id="it-works">It works!</h1>
+#+end_src
+
+---------------------
+
+* Quick start
+:PROPERTIES:
+:CUSTOM_ID: quick-start
+:END:
+
+** Render a string to HTML
+
+#+begin_src scheme
+(use-modules (orgwebalchemy html))
+
+(org->html "This is ~test~ code.")
+;; => "This is <code>test</code> code."
+#+end_src
+
+** Render a string to Markdown
+
+#+begin_src scheme
+(use-modules (orgwebalchemy markdown))
+
+(org->markdown "This is ~test~ code.")
+;; => "This is `test` code."
+#+end_src
+
+** Render a file
+
+#+begin_src scheme
+(use-modules (ice-9 textual-ports)
+             (orgwebalchemy html)
+             (orgwebalchemy markdown))
+
+(define org-source
+  (call-with-input-file "notes.org" get-string-all))
+
+(display (org->html org-source))
+(newline)
+(display (org->markdown org-source))
+#+end_src
+
+** From the shell
+
+#+begin_src shell
+guix shell -m manifest.scm -- \
+  guile -L ./src \
+  -c '(use-modules (orgwebalchemy html)) (display (org->html "* Hello, Org!\n"))'
+#+end_src
+
+That prints:
+
+#+begin_src html
+<h1 id="hello-org">Hello, Org!</h1>
+#+end_src
+
+** A complete, runnable demo
+
+[[file:examples/demo.scm][examples/demo.scm]] reads [[file:examples/hello.org][examples/hello.org]] and prints both renderings. It is deliberately small -- a good starting point to copy into your own project:
+
+#+begin_src scheme
+(use-modules (ice-9 textual-ports)
+             (orgwebalchemy html)
+             (orgwebalchemy markdown))
+
+(define here
+  (dirname (current-filename)))
+
+(define org-source
+  (call-with-input-file (string-append here "/hello.org")
+    get-string-all))
+
+(display ";; HTML fragment\n")
+(display (org->html org-source))
+(newline)
+(newline)
+(display ";; Markdown\n")
+(display (org->markdown org-source))
+#+end_src
+
+** How the pieces fit together
+
+- *Just need a string?* Use ~org->html~ or ~org->markdown~. They parse and render in one call.
+- *Need to render more than once?* Parse with ~org->ast~, then call ~org-ast->html~ or ~org-ast->markdown~.
+- *Need to transform the tree?* Work with the AST directly, or use ~org->sxml~ and stay in SXML.
+- *Need inline markup only?* Use ~inline-org->ast~, ~inline-org->html~, or ~inline-org->markdown~.
+
+---------------------
+
+* API overview
+:PROPERTIES:
+:CUSTOM_ID: api-overview
+:END:
+
+OrgWebAlchemy is three small modules.  Each builds on the one before it, so you
+only pull in what you need.  The full generated API documentation is at
+https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html.
+
+** ~(orgwebalchemy peg)~ -- the parser
+
+The parser turns Org text into an AST and knows nothing about HTML or Markdown.
+
+- ~(org->ast str)~ :: parse a whole document.  A single top-level element comes
+  back as that element's node; several come back as a list of nodes.
+- ~(inline-org->ast str)~ :: parse one line of inline markup.
+
+The parser also owns everything that is true about an Org *link target*, so
+that the HTML and Markdown renderers never have to guess:
+
+- ~(org-link-parts target)~ :: ~(protocol . path)~ for a link target.
+- ~(org-link-protocol target)~, ~(org-link-path target)~,
+  ~(org-link-search target)~ :: the pieces of that pair.
+- ~(org-image-link? target)~ :: is this target an image file or a ~data:image~ URI?
+- ~(org-link-href target)~ :: the href the target should point at.
+- ~(org-link-display target)~ :: the text Org shows for a link with no description.
+- ~(org-anchor text)~ :: the URL fragment a heading (and a ~*Heading~ link) uses.
+- ~(figure-parts node)~ :: ~(name caption target description)~ for a figure
+  node, with ~#f~ for every part the figure does not have.
+- ~(named-parts node)~ :: ~(name element)~ for an element a ~#+NAME:~ line
+  names.
+- ~(document-names ast)~ :: the names the elements of a parsed document carry,
+  which is what a link is resolved against.
+- ~(element-names names)~ :: the parameter holding those names while a document
+  is parsed, which ~inline-org->ast~ resolves a bare link target against.  The
+  two renderers bind it for the length of a document, so the resolution belongs
+  to the parser and neither renderer has to know a name list exists.
+
+** ~(orgwebalchemy html)~ -- rendering to HTML
+
+- ~(org->html str)~ :: Org text to an HTML fragment.
+- ~(org->sxml str)~, ~(org-ast->sxml ast)~ :: Org to SXML, when you want to
+  post-process the tree with ~(sxml simple)~.
+- ~(org-ast->html ast)~ :: a parsed document AST to an HTML fragment.
+- ~(inline-org->html ast)~, ~(inline-org->sxml ast)~ :: inline markup only.
+- ~(sxml->html-string sxml)~ :: the small SXML serialiser the library uses.
+- ~(heading-id text)~ :: the ~((id ...))~ attributes a heading title gets, or
+  ~()~ when the title holds nothing an anchor could be made of.
+
+The full set of CSS class parameters is documented under [[#configuration][Configuration]].
+
+** ~(orgwebalchemy markdown)~ -- rendering to Markdown
+
+- ~(org->markdown str)~ :: Org text to Markdown.
+- ~(org-ast->markdown ast)~ :: a parsed document AST to Markdown.
+- ~(inline-org->markdown ast)~ :: inline markup only.
+
+** What the AST looks like
+
+The parser is not merely answering "does this line match?" It is answering
+"what is this thing, and what are its parts?" For example, this Org:
+
+#+begin_example
+- name :: Joe
+#+end_example
+
+becomes something conceptually similar to:
+
+#+begin_src scheme
+(org-list
+ (desc-item
+  (desc-key "name")
+  (line-content "Joe")))
+#+end_src
+
+A heading and a paragraph are nodes too:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy peg))
+
+(org->ast "* Hello\nA *bold* line.\n")
+;; => ((heading "*" (line-content "Hello"))
+;;     (paragraph (line-content "A *bold* line.")))
+#+end_src
+
+Once you have that tree, rendering is a separate, much simpler problem -- and
+so is any transformation you want to perform before rendering.
+
+---------------------
 
 * Benchmarks
+:PROPERTIES:
+:CUSTOM_ID: benchmarks
+:END:
 
 The parser and the two renderers are benchmarked with
 [[https://codeberg.org/jjba23/veritas][Veritas]], the same test framework used
@@ -640,12 +1010,13 @@ enough to move a figure by ten percent.  On an AMD Ryzen 5 7640U, under Guile
 | Render the feature fixture to Markdown |       2000 |    3296.28 |            1648.14 |
 | Parse a 50-clause inline paragraph     |       2000 |    4204.41 |            2102.21 |
 
-That is a parser that reads a 1.4 KB Org document in 0.3 ms and this 39 KB file
-in 3.4 ms, and two renderers that walk the resulting tree at the same speed as
-each other.  A 50-clause paragraph of inline markup -- fifty links, bold runs
-and code spans in one line -- takes 2.1 ms; inline parsing is the most expensive
-stage per byte, and deliberately so, because a line that carries that many
-constructs has to try every alternative at every position of it.
+That is a parser that reads a 1.4 KB Org document in 0.3 ms and the 39 KB README
+those figures were measured on in 3.4 ms, and two renderers that walk the
+resulting tree at the same speed as each other.  A 50-clause paragraph of
+inline markup -- fifty links, bold runs and code spans in one line -- takes
+2.1 ms; inline parsing is the most expensive stage per byte, and deliberately
+so, because a line that carries that many constructs has to try every
+alternative at every position of it.
 
 ** Allocation and GC pressure
 
@@ -662,11 +1033,10 @@ allocation pressure, not the memory a result keeps.
 | Render the feature fixture to Markdown |             1362.94 KiB |               167.00 |                2.42 ms |
 | Parse a 50-clause inline paragraph     |             1691.05 KiB |               208.50 |                3.01 ms |
 
-Parsing this file asks for about 2.7 MB for 39 KB of input, roughly 70 bytes per
+Parsing that README asks for about 2.7 MB for 39 KB of input, roughly 70 bytes per
 input byte, and the collection counts say a parse of this size is still likely
 to trigger a collection of its own.  Rendering allocates less than parsing,
-since the inline parser only ever sees the text nodes rather than the whole
-document.
+since the inline parser only ever sees the text nodes rather than the whole document.
 
 The last column is Guile's own ~gc-time-taken~, which is collector *CPU* time:
 Guile sums the time of its GC marker threads, so on a multi-core machine a
@@ -692,12 +1062,12 @@ counts the fragments a parse produces and times the merge:
 The counts are what the scanners produced, before the merge, so they say
 nothing about how the collapse pass is written.  32 KB of plain prose arrives
 as 400 fragments -- one per line -- and a single 45 KB line as one, which is
-why the merge is well under a millisecond even for a document the size of this
-one.  What is left is the reading and writing of the tree's own nodes, and the
+why the merge is well under a millisecond even for a document the size of this one.
+What is left is the reading and writing of the tree's own nodes, and the
 allocation that goes with it: the ~cons~-and-reverse the pattern compiler emits
 for every node, rather than the scanning of the text.
 
-The ~README.org~ rows are this file at the length it had when the tables were
+The ~README.org~ rows are that README at the length it had when the tables were
 measured, so they move a little when the documentation grows or shrinks; the
 other rows do not.
 
@@ -712,9 +1082,14 @@ command above.
 The benchmarks measure this implementation on its own.  They do not compare it
 against other Org implementations, and they do not measure the incremental use
 case where a document is re-parsed after a small edit.  Both would be welcome
-additions; see the OrgWebAlchemy Project section at the end of this document.
+additions; see [[#contributing][Contributing]].
+
+---------------------
 
 * Testing
+:PROPERTIES:
+:CUSTOM_ID: testing
+:END:
 
 The project is tested with [[https://codeberg.org/jjba23/veritas][Veritas]], a
 testing framework for Guile.  Suites live under [[file:test/veritas/unit/]] and
@@ -727,6 +1102,24 @@ range of assertions (~assert-equal~, ~assert-contains~, ~assert-matches~,
 classification, heading anchors, figures, named elements and the run scanners,
 and each renderer has its own *Links and images*, *Figures*, *Named elements*
 and *Empty values* suites for the output it produces from them.
+
+** Running the suite
+
+#+begin_src shell
+guix shell -m manifest.scm -- guile -L ./src -L ./test \
+  -c '((@ (veritas runner) run-tests))'
+#+end_src
+
+or, if you have the project's task runner installed:
+
+#+begin_src shell
+maak test
+#+end_src
+
+Fixtures under [[file:test/fixtures/]] are shared between the suites and the
+benchmarks, so both stay honest about the same documents.
+
+** Equivalence and stop-set checks
 
 Two checks the suites cannot express live beside them, because they compare a
 parser against a *previous* one rather than against an expectation.  Both were
@@ -758,6 +1151,8 @@ to the grammar:
   the README, the fixtures, every pair of bytes and random markup -- 6,024
   constructs -- found no gap.
 
+** Three deliberate differences
+
 Three deliberate differences have come out of these runs.  A run of two or more
 ~#+CAPTION:~ or ~#+NAME:~ lines in front of an element that is not a figure used
 to come out of the folder *reversed*; it now keeps document order, which is what
@@ -769,13 +1164,15 @@ without a language still renders as a source block, and an empty keyword,
 comment, fixed-width line, footnote or block stays in the document instead of
 vanishing from it.  And a table row is now read the way Org reads one, by the
 bars that separate its cells: a bar closes a row when nothing but the end of the
-line follows it, which makes a line that is only its closing bar (~|~ on its
-own) a row of one empty cell rather than a row with no cells in it, makes
+line follows it, which makes a line that is only its closing bar (~|~ on its own)
+a row of one empty cell rather than a row with no cells in it, makes
 ~| a ||~ a row of two cells rather than a paragraph, and stops a row that ends
 the input from gaining an empty cell for the newline it does not have.  Each of
 those shapes has a test.  Everything else about the parser is output-identical,
 and the ~#+NAME:~ feature is a change to the language, so it is covered by tests
 rather than by equivalence.
+
+** A trap when adding tests
 
 One trap when adding tests: ~veritas~ collects a test's assertions by filtering
 the test body for procedures, so assertions wrapped in a ~let~, ~when~ or
@@ -783,25 +1180,173 @@ the test body for procedures, so assertions wrapped in a ~let~, ~when~ or
 the top level of the test body, and call a helper when a parameterization is
 needed (the class-parameter tests show how).
 
-Run the unit suite with:
+---------------------
 
-#+begin_src shell
-guix shell -m manifest.scm -- guile -L ./src -L ./test \
-  -c '((@ (veritas runner) run-tests))'
-#+end_src
-
-or with ~maak test~.  Fixtures under [[file:test/fixtures/]] are shared between
-the suites and the benchmarks, so both stay honest about the same documents.
-
-
-* Projects that use Orgwebalchemy
+* Projects that use OrgWebAlchemy
+:PROPERTIES:
+:CUSTOM_ID: projects
+:END:
 
 - LucidPlan :: https://codeberg.org/jjba23/lucidplan
-- WikiMusic ::  https://codeberg.org/jjba23/wikimusic
+- WikiMusic :: https://codeberg.org/jjba23/wikimusic
 
---------------
+LucidPlan uses OrgWebAlchemy to render tickets, backlogs, and project notes:
+
+#+caption: A LucidPlan backlog, rendered with OrgWebAlchemy.
+#+attr_html: :width 100%
+[[file:assets/lucidplan-screenshot.png]]
+
+If you build something with OrgWebAlchemy, send a link. It is always good to
+see where the library travels.
+
+---------------------
+
+* What people are saying
+:PROPERTIES:
+:CUSTOM_ID: what-people-are-saying
+:END:
+
+- [[https://jointhefreeworld.org/blog/articles/lisps/parsing-expression-grammar-lisp-org-convert-to-html/index.html][Parsing Expression Grammar in Lisp: convert Org to HTML]] -- the article that introduced the PEG approach behind OrgWebAlchemy.
+- [[https://www.reddit.com/r/lisp/comments/1wox8h4/parsing_org_mode_with_parsing_expression_grammars/][Parsing Org mode with Parsing Expression Grammars]] -- discussion on r/lisp.
+
+---------------------
+
+* Contributing
+:PROPERTIES:
+:CUSTOM_ID: contributing
+:END:
+
+Contributing to free software is a uniquely beautiful act because it embodies principles of generosity, collaboration, and empowerment.
+
+We welcome everyone to feel invited to the OrgWebAlchemy project. Whether you
+have a bug report, a half-formed idea, a documentation fix, a test case, a
+benchmark, or a patch, you are welcome here. You do not need to be an Org
+expert, a Guile expert, or a long-time contributor. Curiosity is enough.
+
+** Ways to contribute
+
+- *Report a bug.* A small Org snippet that shows the problem is worth more than
+  a long description.
+- *Suggest a feature.* Tell us what you are trying to build, not only what
+  function you want.
+- *Improve the documentation.* If something was confusing to you, it will be
+  confusing to someone else too.
+- *Add a test.* Edge cases around lists, tables, links, figures, and escaping
+  are especially welcome.
+- *Benchmark something.* More workloads, other Guile versions, and comparisons
+  with other Org implementations would all be useful.
+- *Build with it.* A static site generator, a wiki, a notebook, a CLI, an
+  export pipeline -- real users are the best specification.
+
+** Reporting a bug
+
+Please include:
+
+- the Guile version (~guile --version~) and how you installed OrgWebAlchemy
+  (Guix, ~GUILE_LOAD_PATH~, a checkout);
+- the smallest Org document that reproduces the problem;
+- what you expected to happen;
+- what actually happened, including the HTML or Markdown you got;
+- if a test fails, the failing test's name and report, if you have one.
+
+The issue tracker is on Codeberg:
+
+https://codeberg.org/jjba23/orgwebalchemy/issues
+
+** Sending a patch
+
+A comfortable workflow:
+
+#+begin_src shell
+git clone https://codeberg.org/jjba23/orgwebalchemy.git
+cd orgwebalchemy
+guix shell -m manifest.scm
+
+# make your change
+maak fmt      # format Scheme sources with guix style
+maak test     # run the unit suite
+#+end_src
+
+Then open a pull request on Codeberg. Small, focused changes are easiest to review.
+If you are changing the grammar, add a test that pins down the old and
+new behavior, and consider running the equivalence check described under
+[[#testing][Testing]].
+
+By contributing, you agree that your work can be distributed under the
+project's licenses (LGPL-3.0-or-later for code, FDL-1.3-or-later for
+documentation).
+
+** Development tasks
+
+The project uses [[https://codeberg.org/jjba23/maak][maak]] as its task runner.
+From the repository root:
+
+| Task          | What it does                                                       |
+|---------------+--------------------------------------------------------------------|
+| ~maak test~   | Run the unit suite with Veritas.                                   |
+| ~maak fmt~    | Format every ~.scm~ file with ~guix style~.                        |
+| ~maak docs~   | Generate the API documentation with ~guile-documenta~ and Texinfo. |
+| ~maak repl~   | Start a development REPL with ~guile-ares-rs~.                     |
+| ~maak dev~    | Watch the sources and re-run the tests on change.                  |
+| ~maak deploy~ | Generate and publish the API documentation.                        |
+
+The manifest in [[file:manifest.scm][manifest.scm]] pins the development tools, so
+~guix shell -m manifest.scm~ gives you a matching environment.
+
+** Continuous integration
+
+Pushes to the ~trunk~ branch trigger the Woodpecker pipeline in
+[[file:.woodpecker/byggsteg.yaml][.woodpecker/byggsteg.yaml]]. The pipeline submits the
+~maak-test~ and ~maak-deploy~ tasks to
+[[https://byggsteg.jointhefreeworld.org][Byggsteg]]. If you are changing the
+build or the test setup, run those tasks locally first.
+
+** Code of conduct
+
+This project adheres to the jointhefreeworld code of conduct. Find it here:
+
+https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
+
+In summary, we foster an inclusive, respectful, and cooperative environment for all contributors and users of this free software project. Inspired by the ideals of the GNU Project, we strive to uphold freedom, equality, and community as guiding principles. We believe that collaboration in a community of mutual respect is essential to creating excellent free software.
+
+** Project board and contact
+
+Find the backlog and Kanban boards for OrgWebAlchemy here:
+
+https://lucidplan.jointhefreeworld.org/tickets/orgwebalchemy
+
+You can also contact the maintainer directly:
+
+- Josep Bigorra <jjbigorra@gmail.com>
+- Codeberg: https://codeberg.org/jjba23
+
+** Support the project
+
+If OrgWebAlchemy saves you time, you can support its development by
+[[https://bmc.link/jjbigorra][buying the maintainer a cup of coffee ☕]]. It is appreciated, but never
+required: using the library, reporting bugs, and telling other people about it
+are already wonderful contributions.
+
+---------------------
+
+* The OrgWebAlchemy mascot
+:PROPERTIES:
+:CUSTOM_ID: mascot
+:END:
+
+#+attr_html: :width 240
+[[file:assets/orgwebalchemy-mascot.png]]
+
+Part GNU, part alchemist, all free software. The mascot is a reminder that
+turning Org into HTML should feel like magic, even when the grammar underneath
+is carefully written and thoroughly tested.
+
+---------------------
 
 * Licensing
+:PROPERTIES:
+:CUSTOM_ID: licensing
+:END:
 
 orgwebalchemy and all of its source code are free software, licensed under the GNU Lesser General Public License v3 (or newer at your convenience).
 
@@ -811,68 +1356,4 @@ The documentation and examples, including this document, which are provided with
 
 https://www.gnu.org/licenses/fdl-1.3.html
 
----------
-
-* Installing and using
-
-orgwebalchemy is on its way to be packaged via the Guix package manager officially, as ~guile-orgwebalchemy~. It is recommended you use Guix to work on your Guile Scheme projects, and install orgwebalchemy with it (in your manifest.scm for example).
-
-To install it you can download the source code files and add them directly to your ~GUILE_LOAD_PATH~ or even better, use a Guix shell ~manifest.scm~ and add the package with something like this:
-
-#+begin_src scheme
-(define-public guile-orgwebalchemy
-  (package
-    (name "guile-orgwebalchemy")
-    (version "x.x.x")
-    (source
-     (origin
-       (method git-fetch)
-       (uri (git-reference
-             (url "https://codeberg.org/jjba23/orgwebalchemy.git")
-             (commit (string-append "v" version))))
-       (file-name (git-file-name name version))
-       (sha256
-        (base32 "<depends on version>"))))
-    (build-system guile-build-system)
-    (native-inputs (list guile-3.0))
-    (arguments
-     (list
-      #:source-directory "src"))
-    (home-page "https://codeberg.org/jjba23/orgwebalchemy")
-    (synopsis
-     "Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library")
-    (description
-     "Convert Org markup to pretty HTML with a Lisp (Guile Scheme) library")
-    (license license:lgpl3+)))
-#+end_src
-
--------------
-
-* Code of conduct
-
-This project adheres to the jointhefreeworld code of conduct. Find it here:
-
-https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
-
-In summary, we foster an inclusive, respectful, and cooperative environment for all contributors and users of this free software project. Inspired by the ideals of the GNU Project, we strive to uphold freedom, equality, and community as guiding principles. We believe that collaboration in a community of mutual respect is essential to creating excellent free software.
-
--------
-
-* OrgWebAlchemy Project
-
-Contributing to free software is a uniquely beautiful act because it embodies principles of generosity, collaboration, and empowerment.
-
-We welcome everyone to feel invited to the orgwebalchemy Project, and encourage active contribution in all forms, to improve it and/or suggest improvements, brainstorm with me, make it more modular/flexible, etc, feel free to contact me <jjbigorra@gmail.com> to chat, discuss or report feedback.
-
-Find here the Backlog and Kanban boards for orgwebalchemy: https://lucidplan.jointhefreeworld.org/tickets/orgwebalchemy
-
--------
-
-[[https://jointhefreeworld.org/static-assets/orgwebalchemy/orgwebalchemy-small.png]]
-
----------
-
-* What people are saying about OrgWebAlchemy
-
-- https://jointhefreeworld.org/blog/articles/lisps/parsing-expression-grammar-lisp-org-convert-to-html/index.html
-- https://www.reddit.com/r/lisp/comments/1wox8h4/parsing_org_mode_with_parsing_expression_grammars/
+In SPDX terms: ~LGPL-3.0-or-later~ for the code and ~FDL-1.3-or-later~ for the documentation.

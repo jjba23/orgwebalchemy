@@ -1,0 +1,16 @@
+* One parser, two renderers
+Write Org, get *HTML* or *Markdown*.
+
+- *bold*, /italic/, ~code~, =verbatim=
+- [[https://orgmode.org][Org mode]] links
+- [ ] ship it
+- [X] parse it
+
+#+BEGIN_SRC scheme
+(org->html "* Hello, world!")
+#+END_SRC
+
+| Output   | Ready |
+|----------+-------|
+| HTML     | yes   |
+| Markdown | yes   |
