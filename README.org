@@ -1197,6 +1197,7 @@ see where the library travels.
 :CUSTOM_ID: what-people-are-saying
 :END:
 
+- [[https://jointhefreeworld.org/blog/articles/lisps/orgwebalchemy-benchmarking-profiling-and-org-support/][Benchmarking and Optimizing OrgWebAlchemy]] - OrgWebAlchemy: Benchmarking, Profiling, and the Long Road to Real Org Support
 - [[https://jointhefreeworld.org/blog/articles/lisps/parsing-expression-grammar-lisp-org-convert-to-html/index.html][Parsing Expression Grammar in Lisp: convert Org to HTML]] -- the article that introduced the PEG approach behind OrgWebAlchemy.
 - [[https://www.reddit.com/r/lisp/comments/1wox8h4/parsing_org_mode_with_parsing_expression_grammars/][Parsing Org mode with Parsing Expression Grammars]] -- discussion on r/lisp.
 
