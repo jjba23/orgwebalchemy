@@ -51,16 +51,20 @@
 
 (define (repl)
   "Development REPL."
-  (time-machine-manifest-shell '("guile -L ./src"
-                                 "-c '((@ (ares server) run-nrepl-server))'")))
+  (time-machine-manifest-shell (list "guile" "-L" "./src"
+                                     "-c" "'((@ (ares server) run-nrepl-server))'")))
 
+;; A manifest shell joins the parts it is handed into one shell line, so each
+;; argument is a part of its own and each command is a call of its own: a `&&'
+;; would be one word inside a part, and a failure would be reported by the line
+;; rather than by the step that failed.
 (define (docs)
   "Generate technical API documentation for Orgwebalchemy."
   (delete-file-recursively "doc")
-  (time-machine-manifest-shell (list (~ "documenta api ./src/~a && "
-                                        project-name)
-                                     (~ "texi2any -v --html --css-ref=~a"
-                                        api-docs-css-url)
+  (time-machine-manifest-shell (list "documenta" "api"
+                                     (~ "./src/~a" project-name)))
+  (time-machine-manifest-shell (list "texi2any" "-v" "--html"
+                                     (~ "--css-ref=~a" api-docs-css-url)
                                      "./doc/api/index.texi"))
   (mv "./index" "./doc/api-dist"))
 
@@ -69,25 +73,26 @@
   (docs)
   (remkdir-p (~ "~a/api-docs/~a" deploy-api-docs-dir project-name))
   (mv "doc/api-dist/*"
-      (~ "~a/api-docs/~a" deploy-api-docs-dir project-name))
+      (~ "~a/api-docs/~a" deploy-api-docs-dir project-name)
+      #:expand? #t)
   (delete-file-recursively "doc"))
 
 (define (test)
   "Run project's tests."
-  (time-machine-manifest-shell (list "guile -L ./src -L ./test"
-                                     "-c '((@ (veritas runner) run-tests))'")))
+  (time-machine-manifest-shell (list "guile" "-L" "./src" "-L" "./test"
+                                     "-c" "'((@ (veritas runner) run-tests))'")))
 
 (define (hot-reload)
   "Hot-reloading developer's setup."
-  (time-machine-manifest-shell (list "watchexec 'maak test'"
+  (time-machine-manifest-shell (list "watchexec" "'maak test'"
                                      "--clear"
-                                     (~ "--exts ~a"
-                                        (string-join (map symbol->string
-                                                      hot-reload-file-types)
-                                                     ","))
+                                     "--exts"
+                                     (string-join (map symbol->string
+                                                       hot-reload-file-types)
+                                                  ",")
                                      "--on-busy-update=restart"
-                                     "--shell bash"
-                                     "--watch .")))
+                                     "--shell" "bash"
+                                     "--watch" ".")))
 
 (define (hr)
   "Alias to hot-reloading."
