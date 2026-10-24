@@ -82,7 +82,7 @@ Here is what that buys you, depending on what you are building:
 | Post-process the document tree with SXML       | ~org->sxml~, ~org-ast->sxml~                            |
 | Style every element for your design system     | the HTML class parameters                               |
 | Embed Org rendering in a static site generator | the three modules below                                 |
-| Understand how the parser works                | [[#how-it-works][the PEG section]]                      |
+| Understand how the parser works                | [[#how-it-works][the PEG section]]                                         |
 
 OrgWebAlchemy is a library, not an application. It has no opinion about your web framework, your static-site generator, your templating language, or your CSS. It gives you a correct tree and clean output; the rest is yours.
 
@@ -113,6 +113,9 @@ OrgWebAlchemy is a library, not an application. It has no opinion about your web
 :END:
 
 ** What is a PEG? (Parsing Expression Grammars)
+:PROPERTIES:
+:CUSTOM_ID: what-is-a-peg-parsing-expression-grammars
+:END:
 
 Read a [[https://en.wikipedia.org/wiki/Parsing_expression_grammar][nice explanation of PEG on Wikipedia]] or dive directly into the Guile Scheme ~(ice-9 peg)~ module and accompanying [[https://doc.guix.gnu.org/guile/3.0.9/en/html_node/PEG-Parsing.html][fantastic tutorial by GNU]].
 
@@ -132,6 +135,9 @@ They contain nested structures, different kinds of lists, source blocks, descrip
 This is where =orgwebalchemy= uses *Parsing Expression Grammars (PEGs)* and their power to parse correctly and convert powerfully to an AST for later rendering (to different formats).
 
 ** PEG instead of regex soup
+:PROPERTIES:
+:CUSTOM_ID: peg-instead-of-regex-soup
+:END:
 
 A parser built from increasingly large regular expressions tends to become a collection of special cases. Eventually the regular expressions stop describing the language and start describing the bugs in the parser.
 
@@ -185,6 +191,9 @@ And a list item can be described in terms of its components:
 This is much closer to the actual language than a regular expression trying to match an entire document.
 
 ** PEG gives structure
+:PROPERTIES:
+:CUSTOM_ID: peg-gives-structure
+:END:
 
 One of the most important advantages of PEG is that parsing can produce a structured representation of the input.
 
@@ -234,6 +243,9 @@ Org text
 This separation keeps the parser concerned with *syntax* and the renderer concerned with *presentation*.
 
 ** Context matters
+:PROPERTIES:
+:CUSTOM_ID: context-matters
+:END:
 
 Real-world Org syntax contains constructs that cannot safely be parsed by looking at one regular expression in isolation.
 
@@ -258,6 +270,9 @@ Similarly, a source block has different parsing rules from ordinary paragraph te
 PEG lets us express these boundaries explicitly.
 
 ** PEG is composable
+:PROPERTIES:
+:CUSTOM_ID: peg-is-composable
+:END:
 
 Another reason PEG works particularly well and scales is that grammars can be built from smaller grammars.
 
@@ -292,6 +307,9 @@ Likewise, the inline parser does not need to understand headings or lists.
 This gives us small, composable grammars instead of one enormous regular expression.
 
 ** PEG is not magic
+:PROPERTIES:
+:CUSTOM_ID: peg-is-not-magic
+:END:
 
 Using PEG does not mean that Org mode suddenly becomes easy to parse.
 
@@ -300,6 +318,9 @@ Org is a large language with many historical conventions, and =orgwebalchemy= do
 The important difference is that when the grammar grows, we can extend the grammar itself rather than adding another pile of increasingly fragile regular-expression substitutions.
 
 ** Why not just use regex?
+:PROPERTIES:
+:CUSTOM_ID: why-not-just-use-regex
+:END:
 
 Regular expressions are still useful.
 
@@ -343,6 +364,9 @@ And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 :END:
 
 ** Styling HTML with class parameters
+:PROPERTIES:
+:CUSTOM_ID: styling-html-with-class-parameters
+:END:
 
 The HTML renderer emits semantic elements with no styles attached. Every element reads its CSS classes from a Guile parameter, so one document can be styled for any design system without touching the parser:
 
@@ -375,10 +399,16 @@ class list, except ~heading-classes~, whose default is a procedure that returns
 the empty list for every level.
 
 ** What is deliberately not configurable
+:PROPERTIES:
+:CUSTOM_ID: what-is-deliberately-not-configurable
+:END:
 
 The Markdown renderer has no class parameters: Markdown has no styling of its own. Its job is to preserve structure and meaning, falling back to inline HTML only where Markdown has no equivalent. Link classification, figure folding, and name resolution also live in the parser, so the two renderers always agree about them.
 
 ** Heading anchors
+:PROPERTIES:
+:CUSTOM_ID: heading-anchors
+:END:
 
 Every heading carries an ~id~, and a ~[[*Heading][link]]~ points at the same anchor. Both are produced by ~org-anchor~, so they cannot drift apart:
 
@@ -406,6 +436,9 @@ Org is a large language. OrgWebAlchemy aims to handle the constructs people actu
 - *Output* :: HTML fragments, SXML, Markdown, inline-only rendering, configurable CSS classes for HTML.
 
 ** Block elements
+:PROPERTIES:
+:CUSTOM_ID: block-elements
+:END:
 
 - Headings (lines starting with one or more ~*~), including an optional TODO keyword,
   priority (~[#A]~) and tags (~:tag1:tag2:~)
@@ -431,6 +464,9 @@ Org is a large language. OrgWebAlchemy aims to handle the constructs people actu
   inline footnotes (~[fn::text]~)
 
 ** Inline markup
+:PROPERTIES:
+:CUSTOM_ID: inline-markup
+:END:
 
 - Italic, Bold, Underline, Strikethrough, Inline Code and Verbatim
 - Superscript and subscript in their braced form (~x^{2}~, ~H_{2}O~)
@@ -439,6 +475,9 @@ Org is a large language. OrgWebAlchemy aims to handle the constructs people actu
 - Links to images, which render as images in both renderers
 
 ** Links and images
+:PROPERTIES:
+:CUSTOM_ID: links-and-images
+:END:
 
 An Org link is not just a URL in brackets: its target says what kind of link
 it is, and both renderers have to agree on what to do with each kind.  Instead
@@ -502,6 +541,9 @@ title, so they cannot drift apart.  ~heading-id~ builds the attribute, and
 other element class.
 
 ** Figures
+:PROPERTIES:
+:CUSTOM_ID: figures
+:END:
 
 Org gives the element that follows a ~#+CAPTION:~ or ~#+NAME:~ keyword a
 caption and a name.  When that element is a link to an image, the caption, the
@@ -544,6 +586,9 @@ one ~#+NAME:~ line gives the figure its id, and ~figure-parts~ returns
 not have.  ~figure-classes~ and ~figure-caption-classes~ style the element.
 
 ** Named elements
+:PROPERTIES:
+:CUSTOM_ID: named-elements
+:END:
 
 A figure is the image case of a more general rule: ~#+NAME:~ names the element
 that follows it.  Every element that renders as something a link can land on
@@ -617,6 +662,9 @@ the line stays an ordinary keyword line, in its own place:
 #+end_src
 
 ** Exporting to Markdown
+:PROPERTIES:
+:CUSTOM_ID: exporting-to-markdown
+:END:
 
 The ~(orgwebalchemy markdown)~ module renders the same AST as the HTML module.
 It exports ~org->markdown~ (an Org string), ~org-ast->markdown~ (a parsed AST)
@@ -638,6 +686,9 @@ way to keep their meaning:
 #+end_src
 
 ** Current limitations
+:PROPERTIES:
+:CUSTOM_ID: current-limitations
+:END:
 
 Org is large, and this parser does not claim to cover every historical convention.
 The known edges are:
@@ -671,12 +722,90 @@ The project is developed and tested on GNU/Linux. If you get it running elsewher
 
 ---------------------
 
+* Ways to install
+:PROPERTIES:
+:CUSTOM_ID: ways-to-install
+:END:
+
+/Four routes to the same 1.2.2, from the most automated to the most manual.  They all build the tag this README documents./
+
+** From the Guix channel
+:PROPERTIES:
+:CUSTOM_ID: from-the-guix-channel
+:END:
+*GNU Guix* is the functional package manager this project is developed with: a build is a pure function of its inputs, so the same recipe gives the same result everywhere, and an upgrade that goes wrong can be rolled back.
+
+The jointhefreeworld channel carries ~guile-orgwebalchemy~ at 1.2.2, so a checkout of the channel is enough — no package definition to write:
+
+#+begin_src shell
+git clone https://codeberg.org/jjba23/guix-jointhefreeworld.git
+guix install -L ./guix-jointhefreeworld guile-orgwebalchemy
+#+end_src
+
+Add the channel to ~$HOME/.config/guix/channels.scm~ (the channel's README has the four lines) and a plain ~guix install guile-orgwebalchemy~ keeps working on every later ~guix pull~.
+
+** From the Nix flake
+:PROPERTIES:
+:CUSTOM_ID: from-the-nix-flake
+:END:
+*Nix* offers the same declarative, reproducible model with its own language, its own store and a binary cache, and it is a natural fit if the rest of your machine is already described in Nix.
+
+The jointhefreeworld flake builds this project with this repository's own expression, so the package cannot drift from the source:
+
+#+begin_src shell
+nix build github:jjba23/nix-jointhefreeworld#guile-orgwebalchemy
+#+end_src
+
+The same attribute is available as an overlay, so ~pkgs.jointhefreeworld.guile-orgwebalchemy~ works inside a NixOS or home-manager configuration too.
+
+** As a container image
+:PROPERTIES:
+:CUSTOM_ID: as-a-container-image
+:END:
+*Podman or Docker* is the route that puts nothing on the host: the ~Dockerfile~ in this repository builds the project in a builder stage and copies only what it installed into a runtime stage, so the image is small and the host keeps its own toolchain untouched.
+
+#+begin_src shell
+podman build -t orgwebalchemy .   # docker build -t orgwebalchemy . also works
+podman run --rm -it orgwebalchemy
+#+end_src
+
+The image's entry point is Guile, with orgwebalchemy on its load path, which makes it useful for a quick try and for reproducing a bug on a clean system.
+
+** As a distribution package
+:PROPERTIES:
+:CUSTOM_ID: as-a-distribution-package
+:END:
+*Debian, openSUSE and Arch* each get the project through their own package manager.  Packaging lives in this repository under ~packaging/~ and is pinned to the same release tag, so the recipes and the sources they build are versioned together.
+
+None of the three archives ships orgwebalchemy yet, so these are recipes to build rather than packages to install from a mirror:
+
+| Distribution   | Package         | How to build it                                                                     |
+|----------------+-----------------+-------------------------------------------------------------------------------------|
+| Debian, Ubuntu | ~orgwebalchemy~ | copy ~packaging/debian~ to the repository root, then ~dpkg-buildpackage -us -uc -b~ |
+| openSUSE       | ~orgwebalchemy~ | ~osc build~ with ~packaging/opensuse~                                               |
+| Arch           | ~orgwebalchemy~ | ~makepkg -si~ in ~packaging/arch~                                                   |
+
+Each recipe carries its own dependency list, so a missing library fails the build with its name rather than producing a package that cannot load.
+
+** Which one?
+:PROPERTIES:
+:CUSTOM_ID: which-one
+:END:
+- *Guix* if you want the toolchain the project is tested with, and the ability to roll back a bad upgrade.
+- *Nix* if the rest of your machine is already declarative; the flake pins nixpkgs and gives you a binary cache.
+- *Container* if you only want to try the release, or reproduce a report on a machine that has nothing installed.
+- *Distribution package* if you want the project managed by the same tool as the rest of your system, with its licence, manual page and launcher in the usual places.
+
+
 * Installation
 :PROPERTIES:
 :CUSTOM_ID: installation
 :END:
 
 ** The quickest path: a checkout and a Guix shell
+:PROPERTIES:
+:CUSTOM_ID: the-quickest-path-a-checkout-and-a-guix-shell
+:END:
 
 #+begin_src shell
 git clone https://codeberg.org/jjba23/orgwebalchemy.git
@@ -693,8 +822,14 @@ guile -L ./src examples/demo.scm
 #+end_src
 
 ** Use it in your own project
+:PROPERTIES:
+:CUSTOM_ID: use-it-in-your-own-project
+:END:
 
 *** With Guix
+:PROPERTIES:
+:CUSTOM_ID: with-guix
+:END:
 
 OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwebalchemy~. Until then, the recipe below is self-contained and builds the current release. Save it as ~guile-orgwebalchemy.scm~:
 
@@ -764,6 +899,9 @@ If you maintain a Guix channel, add the package definition to it and use
 ~guile-orgwebalchemy~ like any other package from that channel.
 
 *** Manually, with ~GUILE_LOAD_PATH~
+:PROPERTIES:
+:CUSTOM_ID: manually-with-guileloadpath
+:END:
 
 Clone the repository and point Guile at its ~src~ directory:
 
@@ -779,6 +917,9 @@ guile -L /path/to/orgwebalchemy/src your-program.scm
 #+end_src
 
 *** Verify the installation
+:PROPERTIES:
+:CUSTOM_ID: verify-the-installation
+:END:
 
 #+begin_src shell
 guile -c '(use-modules (orgwebalchemy html)) (display (org->html "* It works!\n"))'
@@ -798,6 +939,9 @@ You should see:
 :END:
 
 ** Render a string to HTML
+:PROPERTIES:
+:CUSTOM_ID: render-a-string-to-html
+:END:
 
 #+begin_src scheme
 (use-modules (orgwebalchemy html))
@@ -807,6 +951,9 @@ You should see:
 #+end_src
 
 ** Render a string to Markdown
+:PROPERTIES:
+:CUSTOM_ID: render-a-string-to-markdown
+:END:
 
 #+begin_src scheme
 (use-modules (orgwebalchemy markdown))
@@ -816,6 +963,9 @@ You should see:
 #+end_src
 
 ** Render a file
+:PROPERTIES:
+:CUSTOM_ID: render-a-file
+:END:
 
 #+begin_src scheme
 (use-modules (ice-9 textual-ports)
@@ -831,6 +981,9 @@ You should see:
 #+end_src
 
 ** From the shell
+:PROPERTIES:
+:CUSTOM_ID: from-the-shell
+:END:
 
 #+begin_src shell
 guix shell -m manifest.scm -- \
@@ -845,6 +998,9 @@ That prints:
 #+end_src
 
 ** A complete, runnable demo
+:PROPERTIES:
+:CUSTOM_ID: a-complete-runnable-demo
+:END:
 
 [[file:examples/demo.scm][examples/demo.scm]] reads [[file:examples/hello.org][examples/hello.org]] and prints both renderings. It is deliberately small -- a good starting point to copy into your own project:
 
@@ -869,6 +1025,9 @@ That prints:
 #+end_src
 
 ** How the pieces fit together
+:PROPERTIES:
+:CUSTOM_ID: how-the-pieces-fit-together
+:END:
 
 - *Just need a string?* Use ~org->html~ or ~org->markdown~. They parse and render in one call.
 - *Need to render more than once?* Parse with ~org->ast~, then call ~org-ast->html~ or ~org-ast->markdown~.
@@ -887,6 +1046,9 @@ only pull in what you need.  The full generated API documentation is at
 https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html.
 
 ** ~(orgwebalchemy peg)~ -- the parser
+:PROPERTIES:
+:CUSTOM_ID: orgwebalchemy-peg-the-parser
+:END:
 
 The parser turns Org text into an AST and knows nothing about HTML or Markdown.
 
@@ -916,6 +1078,9 @@ that the HTML and Markdown renderers never have to guess:
   to the parser and neither renderer has to know a name list exists.
 
 ** ~(orgwebalchemy html)~ -- rendering to HTML
+:PROPERTIES:
+:CUSTOM_ID: orgwebalchemy-html-rendering-to-html
+:END:
 
 - ~(org->html str)~ :: Org text to an HTML fragment.
 - ~(org->sxml str)~, ~(org-ast->sxml ast)~ :: Org to SXML, when you want to
@@ -929,12 +1094,18 @@ that the HTML and Markdown renderers never have to guess:
 The full set of CSS class parameters is documented under [[#configuration][Configuration]].
 
 ** ~(orgwebalchemy markdown)~ -- rendering to Markdown
+:PROPERTIES:
+:CUSTOM_ID: orgwebalchemy-markdown-rendering-to-markdown
+:END:
 
 - ~(org->markdown str)~ :: Org text to Markdown.
 - ~(org-ast->markdown ast)~ :: a parsed document AST to Markdown.
 - ~(inline-org->markdown ast)~ :: inline markup only.
 
 ** What the AST looks like
+:PROPERTIES:
+:CUSTOM_ID: what-the-ast-looks-like
+:END:
 
 The parser is not merely answering "does this line match?" It is answering
 "what is this thing, and what are its parts?" For example, this Org:
@@ -1010,6 +1181,9 @@ so, because a line that carries that many constructs has to try every
 alternative at every position of it.
 
 ** Allocation and GC pressure
+:PROPERTIES:
+:CUSTOM_ID: allocation-and-gc-pressure
+:END:
 
 The same run measures what the work does to the heap.  The heap is collected
 before each workload, and what is reported is the allocation the workload asked
@@ -1018,11 +1192,11 @@ allocation pressure, not the memory a result keeps.
 
 | Workload                               | Allocated per operation | GC runs per 1000 ops | GC time per operation |
 |----------------------------------------+-------------------------+----------------------+-----------------------|
-| Parse the feature fixture              |              228.67 KiB |                28.50 |                0.40 ms |
-| Parse README.org                       |             2630.23 KiB |               315.00 |                4.67 ms |
-| Render the feature fixture to HTML     |             1360.62 KiB |               166.00 |                2.43 ms |
-| Render the feature fixture to Markdown |             1362.94 KiB |               167.00 |                2.42 ms |
-| Parse a 50-clause inline paragraph     |             1691.05 KiB |               208.50 |                3.01 ms |
+| Parse the feature fixture              | 228.67 KiB              |                28.50 | 0.40 ms               |
+| Parse README.org                       | 2630.23 KiB             |               315.00 | 4.67 ms               |
+| Render the feature fixture to HTML     | 1360.62 KiB             |               166.00 | 2.43 ms               |
+| Render the feature fixture to Markdown | 1362.94 KiB             |               167.00 | 2.42 ms               |
+| Parse a 50-clause inline paragraph     | 1691.05 KiB             |               208.50 | 3.01 ms               |
 
 Parsing that README asks for about 2.7 MB for 39 KB of input, roughly 70 bytes per
 input byte, and the collection counts say a parse of this size is still likely
@@ -1037,6 +1211,9 @@ share of the clock it takes.  Allocation and collection counts are exact and
 are the stable half of this table.
 
 ** Fragments and the collapse pass
+:PROPERTIES:
+:CUSTOM_ID: fragments-and-the-collapse-pass
+:END:
 
 A parse first produces a tree of *fragments*, which a collapse pass then merges
 into the strings they spell.  The run scanners hand that pass one fragment per
@@ -1044,11 +1221,11 @@ run of text rather than one per character, so the third table the suite prints
 counts the fragments a parse produces and times the merge:
 
 | Document                 | Fragments handed to the collapse pass | Collapse (ms) |
-|--------------------------+--------------------------------------+---------------|
-| Feature fixture (1.4 KB) |                                   82 |         0.043 |
-| README.org               |                                  768 |         0.385 |
-| Plain prose (32 KB)      |                                  400 |         0.216 |
-| One 45 KB line           |                                    1 |         0.005 |
+|--------------------------+---------------------------------------+---------------|
+| Feature fixture (1.4 KB) |                                    82 |         0.043 |
+| README.org               |                                   768 |         0.385 |
+| Plain prose (32 KB)      |                                   400 |         0.216 |
+| One 45 KB line           |                                     1 |         0.005 |
 
 The counts are what the scanners produced, before the merge, so they say
 nothing about how the collapse pass is written.  32 KB of plain prose arrives
@@ -1069,6 +1246,9 @@ percent and the fragment counts are exact.  Reproduce everything with the
 command above.
 
 ** What the benchmarks do not cover
+:PROPERTIES:
+:CUSTOM_ID: what-the-benchmarks-do-not-cover
+:END:
 
 The benchmarks measure this implementation on its own.  They do not compare it
 against other Org implementations, and they do not measure the incremental use
@@ -1095,6 +1275,9 @@ and each renderer has its own *Links and images*, *Figures*, *Named elements*
 and *Empty values* suites for the output it produces from them.
 
 ** Running the suite
+:PROPERTIES:
+:CUSTOM_ID: running-the-suite
+:END:
 
 #+begin_src shell
 guix shell -m manifest.scm -- guile -L ./src -L ./test \
@@ -1111,6 +1294,9 @@ Fixtures under [[file:test/fixtures/]] are shared between the suites and the
 benchmarks, so both stay honest about the same documents.
 
 ** Equivalence and stop-set checks
+:PROPERTIES:
+:CUSTOM_ID: equivalence-and-stop-set-checks
+:END:
 
 Two checks the suites cannot express live beside them, because they compare a
 parser against a *previous* one rather than against an expectation.  Both were
@@ -1143,6 +1329,9 @@ to the grammar:
   constructs -- found no gap.
 
 ** Three deliberate differences
+:PROPERTIES:
+:CUSTOM_ID: three-deliberate-differences
+:END:
 
 Three deliberate differences have come out of these runs.  A run of two or more
 ~#+CAPTION:~ or ~#+NAME:~ lines in front of an element that is not a figure used
@@ -1164,6 +1353,9 @@ and the ~#+NAME:~ feature is a change to the language, so it is covered by tests
 rather than by equivalence.
 
 ** A trap when adding tests
+:PROPERTIES:
+:CUSTOM_ID: a-trap-when-adding-tests
+:END:
 
 One trap when adding tests: ~veritas~ collects a test's assertions by filtering
 the test body for procedures, so assertions wrapped in a ~let~, ~when~ or
@@ -1216,6 +1408,9 @@ benchmark, or a patch, you are welcome here. You do not need to be an Org
 expert, a Guile expert, or a long-time contributor. Curiosity is enough.
 
 ** Ways to contribute
+:PROPERTIES:
+:CUSTOM_ID: ways-to-contribute
+:END:
 
 - *Report a bug.* A small Org snippet that shows the problem is worth more than
   a long description.
@@ -1231,6 +1426,9 @@ expert, a Guile expert, or a long-time contributor. Curiosity is enough.
   export pipeline -- real users are the best specification.
 
 ** Reporting a bug
+:PROPERTIES:
+:CUSTOM_ID: reporting-a-bug
+:END:
 
 Please include:
 
@@ -1246,6 +1444,9 @@ The issue tracker is on Codeberg:
 https://codeberg.org/jjba23/orgwebalchemy/issues
 
 ** Sending a patch
+:PROPERTIES:
+:CUSTOM_ID: sending-a-patch
+:END:
 
 A comfortable workflow:
 
@@ -1269,6 +1470,9 @@ project's licenses (LGPL-3.0-or-later for code, FDL-1.3-or-later for
 documentation).
 
 ** Development tasks
+:PROPERTIES:
+:CUSTOM_ID: development-tasks
+:END:
 
 The project uses [[https://codeberg.org/jjba23/maak][maak]] as its task runner.
 From the repository root:
@@ -1286,6 +1490,9 @@ The manifest in [[file:manifest.scm][manifest.scm]] pins the development tools, 
 ~guix shell -m manifest.scm~ gives you a matching environment.
 
 ** Continuous integration
+:PROPERTIES:
+:CUSTOM_ID: continuous-integration
+:END:
 
 Pushes to the ~trunk~ branch trigger the Woodpecker pipeline in
 [[file:.woodpecker/byggsteg.yaml][.woodpecker/byggsteg.yaml]]. The pipeline submits the
@@ -1294,6 +1501,9 @@ Pushes to the ~trunk~ branch trigger the Woodpecker pipeline in
 build or the test setup, run those tasks locally first.
 
 ** Code of conduct
+:PROPERTIES:
+:CUSTOM_ID: code-of-conduct
+:END:
 
 This project adheres to the jointhefreeworld code of conduct. Find it here:
 
@@ -1302,6 +1512,9 @@ https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-con
 In summary, we foster an inclusive, respectful, and cooperative environment for all contributors and users of this free software project. Inspired by the ideals of the GNU Project, we strive to uphold freedom, equality, and community as guiding principles. We believe that collaboration in a community of mutual respect is essential to creating excellent free software.
 
 ** Project board and contact
+:PROPERTIES:
+:CUSTOM_ID: project-board-and-contact
+:END:
 
 Find the backlog and Kanban boards for OrgWebAlchemy here:
 
@@ -1313,6 +1526,9 @@ You can also contact the maintainer directly:
 - Codeberg: https://codeberg.org/jjba23
 
 ** Support the project
+:PROPERTIES:
+:CUSTOM_ID: support-the-project
+:END:
 
 If OrgWebAlchemy saves you time, you can support its development by
 [[https://bmc.link/jjbigorra][buying the maintainer a cup of coffee ☕]]. It is appreciated, but never
