@@ -708,7 +708,7 @@ OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwe
 (define-public guile-orgwebalchemy
   (package
     (name "guile-orgwebalchemy")
-    (version "1.2.1")
+    (version "1.2.2")
     (source
      (origin
        (method url-fetch)
@@ -738,7 +738,7 @@ guix build -f guile-orgwebalchemy.scm
 When you bump the version, refresh the hash with:
 
 #+begin_src shell
-guix download https://codeberg.org/jjba23/orgwebalchemy/archive/v1.2.1.tar.gz
+guix download https://codeberg.org/jjba23/orgwebalchemy/archive/v1.2.2.tar.gz
 #+end_src
 
 Then use the package as you would any other Guix package. The simplest way is

@@ -1,0 +1,29 @@
+Source: orgwebalchemy
+Section: lisp
+Priority: optional
+Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+# veritas is produced by the same packaging batch; build it first.
+Build-Depends:
+ debhelper-compat (= 13),
+ guile-3.0,
+ guile-3.0-dev,
+ pkg-config,
+ guile-library,
+ veritas
+Standards-Version: 4.6.2
+Homepage: https://codeberg.org/jjba23/orgwebalchemy
+Vcs-Git: https://codeberg.org/jjba23/orgwebalchemy.git
+Vcs-Browser: https://codeberg.org/jjba23/orgwebalchemy
+Rules-Requires-Root: no
+
+Package: orgwebalchemy
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+ guile-3.0,
+ guile-library
+Description: Org-mode parser and HTML/Markdown renderer for Guile
+ Orgwebalchemy parses Org-mode with a PEG grammar and renders it as HTML,
+ Markdown or SXML. It is meant for static site generators and other Guile
+ programs that want to read Org files.

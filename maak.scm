@@ -93,3 +93,17 @@
 (define (default)
   "Default task to be run, list available tasks."
   ($ '("maak --list")))
+
+;; ====== Container tasks ======
+
+(define (container-build)
+  "Build the container image for orgwebalchemy."
+  ($ '("podman build -t orgwebalchemy .")))
+
+(define (container-run)
+  "Run the container image for orgwebalchemy."
+  ($ '("podman run --rm -it orgwebalchemy:latest")))
+
+(define (package-docker)
+  "Build the container image for orgwebalchemy."
+  (container-build))
