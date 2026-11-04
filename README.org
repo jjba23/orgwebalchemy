@@ -9,6 +9,9 @@
 
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]   [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
+#+attr_html: :width 160 :alt OrgWebAlchemy logo
+[[file:logo.svg]]
+
 #+begin_quote
 *Org-mode in. HTML and Markdown out.*
 
@@ -795,7 +798,6 @@ Each recipe carries its own dependency list, so a missing library fails the buil
 - *Nix* if the rest of your machine is already declarative; the flake pins nixpkgs and gives you a binary cache.
 - *Container* if you only want to try the release, or reproduce a report on a machine that has nothing installed.
 - *Distribution package* if you want the project managed by the same tool as the rest of your system, with its licence, manual page and launcher in the usual places.
-
 
 * Installation
 :PROPERTIES:
