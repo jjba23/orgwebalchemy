@@ -18,10 +18,6 @@
 OrgWebAlchemy is a small, dependency-light [[https://www.gnu.org/software/guile/][Guile Scheme]] library that parses Org-mode documents with a real [[https://en.wikipedia.org/wiki/Parsing_expression_grammar][PEG grammar]] and renders them to clean *HTML*, *Markdown*, or *SXML*. Write your notes, documentation, or blog in Org; publish them from Scheme, with the structure and the CSS you want.
 #+end_quote
 
-#+caption: One Org document, rendered by both renderers. Generated from [[file:examples/hello.org][examples/hello.org]] with [[file:examples/demo.scm][examples/demo.scm]].
-#+attr_html: :width 100%
-[[file:assets/orgwebalchemy-demo.gif]]
-
 - *What it is* :: a parser and a pair of renderers for Org-mode, written in Guile Scheme and built around a Parsing Expression Grammar.
 - *Who it is for* :: Scheme hackers, static-site authors, wiki and notebook builders, tool makers, and anyone who keeps writing in Org but wants to publish with a library instead of an Emacs export.
 - *Why you will like it* :: it understands real Org rather than a regex-shaped subset, it gives every renderer the same AST, and it lets your CSS classes -- not ours -- decide how the output looks.
@@ -360,6 +356,12 @@ PEGs are great at describing a language.
 And Org mode is a language. That is why =orgwebalchemy= uses PEG.
 
 ---------------------
+
+#+caption: One Org document, rendered by both renderers. Generated from [[file:examples/hello.org][examples/hello.org]] with [[file:examples/demo.scm][examples/demo.scm]].
+#+attr_html: :width 100%
+[[file:assets/orgwebalchemy-demo.gif]]
+
+---------
 
 * Configuration
 :PROPERTIES:
@@ -1536,20 +1538,6 @@ If OrgWebAlchemy saves you time, you can support its development by
 [[https://bmc.link/jjbigorra][buying the maintainer a cup of coffee ☕]]. It is appreciated, but never
 required: using the library, reporting bugs, and telling other people about it
 are already wonderful contributions.
-
----------------------
-
-* The OrgWebAlchemy mascot
-:PROPERTIES:
-:CUSTOM_ID: mascot
-:END:
-
-#+attr_html: :width 240
-[[file:assets/orgwebalchemy-mascot.png]]
-
-Part GNU, part alchemist, all free software. The mascot is a reminder that
-turning Org into HTML should feel like magic, even when the grammar underneath
-is carefully written and thoroughly tested.
 
 ---------------------
 
