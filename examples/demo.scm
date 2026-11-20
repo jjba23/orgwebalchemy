@@ -1,9 +1,7 @@
 ;;; demo.scm --- render examples/hello.org with OrgWebAlchemy
 
+;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-;; This file is part of orgwebalchemy and is licensed under the GNU Lesser
-;; General Public License, version 3 or (at your option) any later version.
 
 ;; Run it from the repository root:
 ;;

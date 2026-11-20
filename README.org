@@ -7,7 +7,7 @@
 #+description: A Guile Scheme library that parses Org-mode with a PEG grammar and renders clean HTML, Markdown, or SXML.
 #+keywords: Org-mode, Guile Scheme, PEG, HTML, Markdown, static site generator, free software
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-lgpl3+.svg]]   [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]]
 
 #+attr_html: :width 160 :alt OrgWebAlchemy logo
 [[file:logo.svg]]
@@ -21,7 +21,7 @@ OrgWebAlchemy is a small, dependency-light [[https://www.gnu.org/software/guile/
 - *What it is* :: a parser and a pair of renderers for Org-mode, written in Guile Scheme and built around a Parsing Expression Grammar.
 - *Who it is for* :: Scheme hackers, static-site authors, wiki and notebook builders, tool makers, and anyone who keeps writing in Org but wants to publish with a library instead of an Emacs export.
 - *Why you will like it* :: it understands real Org rather than a regex-shaped subset, it gives every renderer the same AST, and it lets your CSS classes -- not ours -- decide how the output looks.
-- *Freedom* :: LGPL-3.0-or-later for the code, FDL-1.3-or-later for this documentation. No account, no telemetry, no build service required.
+- *Freedom* :: MIT for the code and for this documentation. No account, no telemetry, no build service required.
 
 *Jump to:* [[#installation][Installation]] · [[#quick-start][Quick start]] · [[#configuration][Configuration]] · [[#supported-org-features][Supported features]] · [[#api-overview][API]] · [[#how-it-works][How it works]] · [[#benchmarks][Benchmarks]] · [[#contributing][Contributing]]
 
@@ -102,7 +102,7 @@ OrgWebAlchemy is a library, not an application. It has no opinion about your web
 - *SXML when you need it* :: ~org->sxml~ and ~org-ast->sxml~ let you post-process the tree with ~(sxml simple)~ or any SXML tool you already use.
 - *Small footprint* :: no runtime dependencies beyond Guile's standard library. The whole library is three modules.
 - *Tested and measured* :: unit suites cover the grammar and both renderers; equivalence checks compare parser revisions over tens of thousands of inputs; benchmarks track parse and render cost.
-- *Free software* :: LGPL-3.0-or-later. Use it in free and non-free programs, improve it, share it.
+- *Free software* :: MIT. Use it in free and non-free programs, improve it, share it.
 
 ---------------------
 
@@ -865,7 +865,7 @@ OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwe
     (description
      "OrgWebAlchemy parses Org-mode documents with a PEG grammar and renders
 them to HTML, Markdown, or SXML.")
-    (license license:lgpl3+)))
+    (license license:mit)))
 #+end_src
 
 Build it, or add it to your own channel:
@@ -1470,8 +1470,7 @@ new behavior, and consider running the equivalence check described under
 [[#testing][Testing]].
 
 By contributing, you agree that your work can be distributed under the
-project's licenses (LGPL-3.0-or-later for code, FDL-1.3-or-later for
-documentation).
+project's license, the MIT License.
 
 ** Development tasks
 :PROPERTIES:
@@ -1546,12 +1545,8 @@ are already wonderful contributions.
 :CUSTOM_ID: licensing
 :END:
 
-orgwebalchemy and all of its source code are free software, licensed under the GNU Lesser General Public License v3 (or newer at your convenience).
+orgwebalchemy and all of its source code are free software, licensed under the MIT License.  So is this documentation and every example shipped with the library, which means a page rendered with orgwebalchemy carries no obligation of its own.
 
-https://www.gnu.org/licenses/lgpl-3.0.html
+https://opensource.org/license/mit
 
-The documentation and examples, including this document, which are provided with orgwebalchemy, are all licensed under the GNU Free Documentation License v1.3 (or newer at your convenience).
-
-https://www.gnu.org/licenses/fdl-1.3.html
-
-In SPDX terms: ~LGPL-3.0-or-later~ for the code and ~FDL-1.3-or-later~ for the documentation.
+In SPDX terms: ~MIT~ throughout.  The full text is in [[file:LICENSE][LICENSE]], and every source file carries ~SPDX-License-Identifier: MIT~ so that a file copied out of the tree still says what it is.

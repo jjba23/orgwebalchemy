@@ -23,7 +23,7 @@ Name:           orgwebalchemy
 Version:        1.2.4
 Release:        0
 Summary:        Org-mode parser and HTML/Markdown renderer for Guile
-License:        LGPL-3.0-or-later
+License:        MIT
 URL:            https://codeberg.org/jjba23/orgwebalchemy
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  pkgconfig(guile-3.0)
@@ -72,7 +72,7 @@ done
 VERITAS_TEST_TYPE=unit VERITAS_RUN_BENCHMARKS=false guile -L ./src -L ./test -c '((@ (veritas runner) run-tests))'
 
 %files
-%license COPYING
+%license LICENSE
 %doc README.org
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
