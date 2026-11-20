@@ -1,19 +1,7 @@
 ;; orgwebalchemy
-
+;;
+;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-;; orgwebalchemy is free software: you can redistribute it and/or modify
-;; it under the terms of the Lesser GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; orgwebalchemy is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; Lesser GNU General Public License for more details.
-
-;; You should have received a copy of the Lesser GNU General Public License
-;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (veritas unit peg-spec)
   #:use-module (ice-9 rdelim)
@@ -333,6 +321,67 @@
                              #:got (org-image-link?
                                     "https://example.org/x.png")))))
 
+;; A scheme the parser does not know is classified and then left as written; a
+;; host application says what it means by binding `link-protocols'.  No scheme
+;; but the ones Org itself defines appears in the parser, so the registry below
+;; is the host's and the parser stays a parser.
+(define you-tube-href
+  (lambda (path)
+    (format #f "https://www.youtube.com/watch?v=~a" path)))
+
+(define custom-protocols-suite
+  (suite "Custom link protocols"
+         (test "an unknown scheme is classified and kept as written"
+               (assert-equal #:expect 'yt
+                             #:got (org-link-protocol "yt:dQw4w9WgXcQ"))
+               (assert-equal #:expect "dQw4w9WgXcQ"
+                             #:got (org-link-path "yt:dQw4w9WgXcQ"))
+               (assert-equal #:expect "yt:dQw4w9WgXcQ"
+                             #:got (org-link-href "yt:dQw4w9WgXcQ")))
+         (test "a registered protocol resolves to the href its resolver gives"
+               (assert-equal #:expect "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                             #:got (parameterize ((link-protocols (list (cons 'yt
+                                                                            you-tube-href))))
+                                     (org-link-href "yt:dQw4w9WgXcQ"))))
+         (test "a resolver that declines leaves the target as written"
+               ;; `#f' is how a resolver says it does not know this one, so a
+               ;; registry entry never has to guess a fallback.
+               (assert-equal #:expect "zotero:ITEMKEY"
+                             #:got (parameterize ((link-protocols (list (cons 'zotero
+                                                                             (lambda (path)
+                                                                               #f)))))
+                                     (org-link-href "zotero:ITEMKEY"))))
+         (test "a resolver is handed the path, without the ::search suffix"
+               (assert-equal #:expect '("dQw4w9WgXcQ")
+                             #:got (parameterize ((link-protocols (list (cons 'yt
+                                                                            (lambda (path)
+                                                                              path)))))
+                                     (list (org-link-href "yt:dQw4w9WgXcQ::*Chorus")))))
+         (test "a link without a description shows the target, not the resolution"
+               ;; The document says `yt:...'; the href is the host's business,
+               ;; and a renderer that showed it would be answering a question
+               ;; nobody asked.
+               (assert-equal #:expect "yt:dQw4w9WgXcQ"
+                             #:got (parameterize ((link-protocols (list (cons 'yt
+                                                                            you-tube-href))))
+                                     (org-link-display "yt:dQw4w9WgXcQ"))))
+         (test "a resolver wins over the href the parser would have given"
+               (assert-equal #:expect "/assets/notes.org"
+                             #:got (parameterize ((link-protocols (list (cons 'file
+                                                                            (lambda (path)
+                                                                              (string-append "/assets/"
+                                                                                             path))))))
+                                     (org-link-href "file:notes.org")))
+               (assert-equal #:expect "notes.org"
+                             #:got (org-link-display "file:notes.org")))
+         (test "no registry leaves the parser's own classification alone"
+               (assert-equal #:expect 'file
+                             #:got (org-link-protocol "notes.org"))
+               (assert-equal #:expect "#custom-id"
+                             #:got (org-link-href "#custom-id"))
+               (assert-equal #:expect "https://example.org/a"
+                             #:got (org-link-href "https://example.org/a")))))
+
 ;; Headings carry their anchor as an id, and `*Heading' links point at the very
 ;; same anchor, so the two can never drift apart.
 (define heading-anchors-suite
@@ -637,6 +686,7 @@
                inline-constructs-suite
                mixed-list-suite
                link-targets-suite
+               custom-protocols-suite
                heading-anchors-suite
                figures-suite
                named-elements-suite

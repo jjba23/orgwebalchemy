@@ -1,19 +1,7 @@
 ;; orgwebalchemy
-
+;;
+;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-;; orgwebalchemy is free software: you can redistribute it and/or modify
-;; it under the terms of the Lesser GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; orgwebalchemy is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; Lesser GNU General Public License for more details.
-
-;; You should have received a copy of the Lesser GNU General Public License
-;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (veritas unit markdown-spec)
   #:use-module (ice-9 rdelim)
@@ -44,6 +32,15 @@
 
 (define (render-inline text)
   (inline-org->markdown (inline-org->ast text)))
+
+;; The whole of the custom-protocol hook: the renderer asks `org-link-href',
+;; and the host has said what `yt:' means.
+(define (with-you-tube thunk)
+  (parameterize ((link-protocols (list (cons 'yt
+                                             (lambda (path)
+                                               (string-append "https://www.youtube.com/watch?v="
+                                                              path))))))
+    (thunk)))
 
 ;; =======================================================================
 ;; Test Suites
@@ -194,7 +191,19 @@
                (assert-equal #:expect "[up](#notes)\n\n"
                              #:got (org->markdown "[[*Notes][up]]"))
                (assert-equal #:expect "[there](#custom-id)\n\n"
-                             #:got (org->markdown "[[#custom-id][there]]")))))
+                             #:got (org->markdown "[[#custom-id][there]]")))
+         (test "a protocol the host resolves becomes the link's href"
+               ;; Both renderers ask `org-link-href', so one binding serves
+               ;; both and neither has to know the scheme.
+               (with-you-tube (lambda ()
+                                (assert-equal #:expect
+                                              "[a video](https://www.youtube.com/watch?v=abc)\n\n"
+                                              #:got (org->markdown
+                                                     "[[yt:abc][a video]]"))
+                                (assert-equal #:expect
+                                              "[yt:abc](https://www.youtube.com/watch?v=abc)\n\n"
+                                              #:got (org->markdown
+                                                     "[[yt:abc]]")))))))
 
 ;; Markdown has no figure element, so a figure becomes its image, its caption
 ;; as an emphasised line, and -- when it has a name -- the anchor a

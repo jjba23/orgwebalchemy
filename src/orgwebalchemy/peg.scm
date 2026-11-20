@@ -1,19 +1,7 @@
-;;; orgwebalchemy
-
+;; orgwebalchemy
+;;
+;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-;; orgwebalchemy is free software: you can redistribute it and/or modify
-;; it under the terms of the Lesser GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; orgwebalchemy is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; Lesser GNU General Public License for more details.
-
-;; You should have received a copy of the Lesser GNU General Public License
-;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (orgwebalchemy peg)
   #:declarative? #t
@@ -32,6 +20,7 @@
                      org-link-search
                      org-link-href
                      org-link-display
+                     link-protocols
                      org-image-link?
                      org-anchor
                      heading-parts
@@ -1258,36 +1247,63 @@ A `file:' link (or a bare path) whose extension is one of
        (string-prefix? "image/" path))
       (else #f))))
 
+;; The link protocols a host application knows.  The parser classifies a target
+;; and stops there: whatever lowercase scheme a target spells becomes the symbol
+;; of that scheme, and no scheme orgwebalchemy does not define itself is named
+;; in this module.  A host that knows what `yt:' or `zotero:' means binds this
+;; to an alist of protocol symbols and resolver procedures, and the resolver --
+;; which takes the path and returns the href to use, or `#f' to decline the
+;; target -- is left with the host, where it belongs.
+(define link-protocols
+  (make-parameter '()))
+
+(define (custom-link-href protocol path)
+  "Return the href a registered resolver gives @var{path} for @var{protocol}.
+@code{#f} when no resolver is registered for @var{protocol}, or when the one
+registered declined the target."
+  (let ((entry (assq protocol
+                     (link-protocols))))
+    (and entry
+         ((cdr entry) path))))
+
 (define (org-link-href target)
   "Return the href an Org link @var{target} should point at.
-File links give their path, `#custom-id' and `*Heading' links give a local
-fragment, and a link with a scheme of its own keeps it."
+A resolver bound in @code{link-protocols} decides first, for any protocol.  On
+its own, a file link gives its path, `#custom-id' and `*Heading' links give a
+local fragment, and a link with a scheme of its own keeps it."
   (let ((protocol (org-link-protocol target))
         (path (org-link-path target)))
-    (cond
-      ((eq? protocol
-            'internal)
-       (string-append "#" path))
-      ((eq? protocol
-            'heading)
-       (string-append "#"
-                      (org-anchor path)))
-      ((eq? protocol
-            'file)
-       path)
-      (else (format #f "~a:~a" protocol path)))))
+    (or (custom-link-href protocol path)
+        (cond
+          ((eq? protocol
+                'internal)
+           (string-append "#" path))
+          ((eq? protocol
+                'heading)
+           (string-append "#"
+                          (org-anchor path)))
+          ((eq? protocol
+                'file)
+           path)
+          (else (format #f "~a:~a" protocol path))))))
 
 (define (org-link-display target)
   "Return the text Org shows for a link @var{target} that has no description.
 An internal or heading link shows its id or title, a file link its path, and a
-link with a scheme of its own the full URL."
-  (let ((protocol (org-link-protocol target)))
-    (if (or (eq? protocol
-                 'internal)
-            (eq? protocol
-                 'heading))
-        (org-link-path target)
-        (org-link-href target))))
+link with a scheme of its own the full URL.  A target a resolver rewrote shows
+what the document wrote instead, because `[[yt:dQw4w9WgXcQ]]' says exactly
+that, and the href is where the resolution belongs."
+  (let* ((protocol (org-link-protocol target))
+         (path (org-link-path target)))
+    (cond
+      ((or (eq? protocol
+                'internal)
+           (eq? protocol
+                'heading))
+       path)
+      ((custom-link-href protocol path)
+       (car (link-search-split target)))
+      (else (org-link-href target)))))
 
 (define (org-anchor text)
   "Return a URL-fragment-safe anchor for @var{text}.

@@ -1,19 +1,7 @@
 ;; orgwebalchemy
-
+;;
+;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-;; orgwebalchemy is free software: you can redistribute it and/or modify
-;; it under the terms of the Lesser GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
-
-;; orgwebalchemy is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; Lesser GNU General Public License for more details.
-
-;; You should have received a copy of the Lesser GNU General Public License
-;; along with orgwebalchemy.  If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (veritas unit html-spec)
   #:use-module (ice-9 rdelim)
@@ -207,6 +195,15 @@
 (define (with-demo-figure-classes thunk)
   (parameterize ((figure-classes '("numbered"))
                  (figure-caption-classes '("caption")))
+    (thunk)))
+
+;; The whole of the custom-protocol hook: the renderer asks `org-link-href',
+;; and the host has said what `yt:' means.
+(define (with-you-tube thunk)
+  (parameterize ((link-protocols (list (cons 'yt
+                                             (lambda (path)
+                                               (string-append "https://www.youtube.com/watch?v="
+                                                              path))))))
     (thunk)))
 
 (define parameterized-classes-suite
@@ -585,6 +582,15 @@
                (assert-equal #:got (org->html
                                     "[[file:notes.org::*Notes][notes]]")
                              #:expect "<p><a href=\"notes.org\">notes</a></p>"))
+         (test "a protocol the host resolves becomes the anchor's href"
+               (with-you-tube (lambda ()
+                                (assert-equal #:got (org->html
+                                                     "[[yt:abc][a video]]")
+                                              #:expect
+                                              "<p><a href=\"https://www.youtube.com/watch?v=abc\">a video</a></p>")
+                                (assert-equal #:got (org->html "[[yt:abc]]")
+                                              #:expect
+                                              "<p><a href=\"https://www.youtube.com/watch?v=abc\">yt:abc</a></p>"))))
          (test "image classes can be customised"
                (with-demo-image-classes (lambda ()
                                           (assert-equal #:got (org->html
