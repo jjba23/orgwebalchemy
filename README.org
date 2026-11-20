@@ -79,8 +79,10 @@ Here is what that buys you, depending on what you are building:
 | Turn an Org string into Markdown               | ~org->markdown~                                         |
 | Parse once and render more than once           | ~org->ast~, then ~org-ast->html~ or ~org-ast->markdown~ |
 | Post-process the document tree with SXML       | ~org->sxml~, ~org-ast->sxml~                            |
+| Hand the tree to another language as data      | ~org->json~                                             |
 | Style every element for your design system     | the HTML class parameters                               |
-| Embed Org rendering in a static site generator | the three modules below                                 |
+| Teach the library your own link protocols      | the ~link-protocols~ parameter                          |
+| Embed Org rendering in a static site generator | the four modules below                                  |
 | Understand how the parser works                | [[#how-it-works][the PEG section]]                                         |
 
 OrgWebAlchemy is a library, not an application. It has no opinion about your web framework, your static-site generator, your templating language, or your CSS. It gives you a correct tree and clean output; the rest is yours.
@@ -97,10 +99,12 @@ OrgWebAlchemy is a library, not an application. It has no opinion about your web
 - *HTML with class hooks everywhere* :: every element the HTML renderer emits takes its CSS classes from a Guile parameter. Bootstrap, Tailwind, Bulma, hand-written CSS -- your call.
 - *Markdown without hand-waving* :: underlines, superscripts, subscripts, description lists, and footnotes fall back to inline HTML or the Markdown conventions that preserve their meaning.
 - *Links that know where they go* :: link targets are classified once, in the parser: external URLs, ~file:~ links, bare paths, ~#custom-id~ links, ~*Heading~ links, image links, and ~::search~ suffixes.
+- *Your own link protocols* :: ~[[yt:...]]~, ~[[zotero:...]]~ and anything else with a scheme of its own is classified by the parser and resolved by you: bind ~link-protocols~ and both renderers follow.
 - *Figures and named elements* :: ~#+CAPTION:~ and ~#+NAME:~ make figures and addressable elements; ~[[fig:name]]~, ~[[tbl:name]]~, and bare-name links resolve to them in both renderers.
 - *Org, not a toy subset* :: headings with TODO keywords, priorities and tags; nested mixed lists; checkboxes; tables with empty cells; source, example, quote, verse, center and export blocks; footnotes; fixed-width lines; separators; comments; and more.
 - *SXML when you need it* :: ~org->sxml~ and ~org-ast->sxml~ let you post-process the tree with ~(sxml simple)~ or any SXML tool you already use.
-- *Small footprint* :: no runtime dependencies beyond Guile's standard library. The whole library is three modules.
+- *JSON when you need data* :: ~org->json~ writes the tree as data any language can read, with a documented node vocabulary, so a renderer can be written without reading the grammar.
+- *Small footprint* :: no runtime dependencies beyond Guile's standard library. The whole library is four modules.
 - *Tested and measured* :: unit suites cover the grammar and both renderers; equivalence checks compare parser revisions over tens of thousands of inputs; benchmarks track parse and render cost.
 - *Free software* :: MIT. Use it in free and non-free programs, improve it, share it.
 
@@ -544,6 +548,46 @@ The heading's id and the link's fragment are both ~org-anchor~ of the same
 title, so they cannot drift apart.  ~heading-id~ builds the attribute, and
 ~image-classes~ is the parameter that styles what an ~<img>~ gets, like every
 other element class.
+
+*** Custom link protocols
+:PROPERTIES:
+:CUSTOM_ID: custom-link-protocols
+:END:
+
+Org documents link to things this library has never heard of: a video, a
+bibliography entry, a ticket in somebody's tracker.  The parser does not learn
+those names.  It classifies the target -- anything with a lower-case scheme
+before the first colon becomes the protocol of that name -- and leaves the
+question of what the link *means* to the program that knows:
+
+#+begin_src scheme
+(use-modules (orgwebalchemy peg)
+             (orgwebalchemy html))
+
+(org-link-protocol "yt:dQw4w9WgXcQ")   ;; => yt
+(org-link-href "yt:dQw4w9WgXcQ")       ;; => "yt:dQw4w9WgXcQ"
+
+(parameterize ((link-protocols
+                (list (cons 'yt
+                            (lambda (path)
+                              (string-append "https://www.youtube.com/watch?v="
+                                             path))))))
+  (org->html "[[yt:dQw4w9WgXcQ][a talk]]"))
+;; => "<p><a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\">a talk</a></p>"
+#+end_src
+
+~link-protocols~ is an alist of protocol symbols and resolvers, and it is the
+whole of the extension: a resolver takes the path (the ~::search~ suffix is
+already set aside by ~org-link-search~) and returns the href to use, or ~#f~ to
+decline the target so that it stays exactly as the document wrote it.  Both
+renderers ask ~org-link-href~, so one binding serves both.
+
+What a resolver changes is the *href*, never the text a link shows: ~[[yt:...]]~
+with no description still reads ~yt:...~, because that is what the document
+says, and the resolution belongs in the attribute.  A protocol with no resolver
+behaves as it always did -- ~mailto:~, ~tel:~ and every other scheme keep
+themselves -- and so does every protocol the parser resolves on its own, unless
+you deliberately register one of those names too.
 
 ** Figures
 :PROPERTIES:
@@ -1045,7 +1089,7 @@ That prints:
 :CUSTOM_ID: api-overview
 :END:
 
-OrgWebAlchemy is three small modules.  Each builds on the one before it, so you
+OrgWebAlchemy is four small modules.  Each builds on the one before it, so you
 only pull in what you need.  The full generated API documentation is at
 https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html.
 
@@ -1069,6 +1113,11 @@ that the HTML and Markdown renderers never have to guess:
 - ~(org-image-link? target)~ :: is this target an image file or a ~data:image~ URI?
 - ~(org-link-href target)~ :: the href the target should point at.
 - ~(org-link-display target)~ :: the text Org shows for a link with no description.
+- ~(link-protocols protocols)~ :: the parameter holding the host's own protocol
+  resolvers, an alist of protocol symbols and procedures of the path.  The
+  parser names no scheme it does not resolve itself, so this is where ~yt:~ and
+  ~zotero:~ live, and both renderers honour it because both ask
+  ~org-link-href~.
 - ~(org-anchor text)~ :: the URL fragment a heading (and a ~*Heading~ link) uses.
 - ~(figure-parts node)~ :: ~(name caption target description)~ for a figure
   node, with ~#f~ for every part the figure does not have.
@@ -1106,6 +1155,19 @@ The full set of CSS class parameters is documented under [[#configuration][Confi
 - ~(org-ast->markdown ast)~ :: a parsed document AST to Markdown.
 - ~(inline-org->markdown ast)~ :: inline markup only.
 
+** ~(orgwebalchemy json)~ -- the tree as data
+:PROPERTIES:
+:CUSTOM_ID: orgwebalchemy-json-the-tree-as-data
+:END:
+
+- ~(org->json str)~ :: Org text to a JSON array of nodes.
+- ~(org-ast->json ast)~ :: a parsed document AST to the same JSON, for a tree
+  you built or edited yourself.
+- ~(inline-org->json str)~ :: one line of inline markup to a JSON array of
+  inline nodes.
+- ~(json-string str)~ :: a string as a JSON string literal, quotes and escaping
+  included.
+
 ** What the AST looks like
 :PROPERTIES:
 :CUSTOM_ID: what-the-ast-looks-like
@@ -1139,6 +1201,81 @@ A heading and a paragraph are nodes too:
 
 Once you have that tree, rendering is a separate, much simpler problem -- and
 so is any transformation you want to perform before rendering.
+
+** The AST as JSON
+:PROPERTIES:
+:CUSTOM_ID: the-ast-as-json
+:END:
+
+The same tree, as data another language can read.  ~org->json~ is the interface
+a third renderer is written against, and the shape is the contract: three rules,
+and no node gets a rule of its own.
+
+- A document is *always* a JSON array of nodes, whether it holds one element or
+  ten, and an empty document is ~[]~.
+- A node is *always* ~{"type": TAG, "children": [...]}~, where ~TAG~ is the node
+  name below.
+- Everything else is a JSON string.
+
+#+begin_src scheme
+(use-modules (orgwebalchemy json))
+
+(org->json "* Hello\nA *bold* line.\n")
+;; => "[{\"type\":\"heading\",\"children\":[\"*\",{\"type\":\"line-content\",\"children\":[{\"type\":\"inline-text\",\"children\":[\"Hello\"]}]}]},{\"type\":\"paragraph\",\"children\":[{\"type\":\"line-content\",\"children\":[{\"type\":\"inline-text\",\"children\":[\"A \"]},{\"type\":\"inline-bold-content\",\"children\":[{\"type\":\"inline-text\",\"children\":[\"bold\"]}]},{\"type\":\"inline-text\",\"children\":[\" line.\"]}]}]}]"
+#+end_src
+
+Read back with any JSON parser, that is a heading with one line of text, then a
+paragraph with three children.  Two things are worth stating explicitly, because
+they are where a serializer would otherwise leave work behind:
+
+- *Prose is resolved.* A ~line-content~, a ~desc-key~, a ~table-cell~ and the
+  fields that carry markup inside markup (~inline-bold-content~ and friends, a
+  link's ~link-description-content~, a footnote's ~footnote-content~) hold the
+  inline nodes the renderers see, not the string the parser kept.  Markup nested
+  in markup is resolved all the way down, so nothing in the JSON has to be
+  parsed again.
+- *Literal is literal.* A source block's ~src-content~, a keyword's
+  ~keyword-value~, a ~lang~ and every other field that Org does not interpret
+  arrive as one string, byte for byte.
+
+The vocabulary, grouped the way the grammar is.  A node that can be absent is
+absent, not empty; a node with no children at all (a table's separator row) is
+still a node, with ~"children": []~.
+
+| Block node                | Children                                                                        |
+|---------------------------+---------------------------------------------------------------------------------|
+| ~heading~                 | the star string, then ~heading-todo~, ~heading-priority~, ~line-content~, ~heading-tags~ |
+| ~paragraph~               | ~line-content~                                                                   |
+| ~org-list~, ~nested-list~ | the items, in document order                                        |
+| ~unordered-item~, ~ordered-item~ | ~line-content~, then any nested list                                  |
+| ~desc-item~               | ~desc-key~, ~line-content~, then any nested list                                |
+| ~table~                   | ~table-header-row~, ~table-separator-row~, ~table-row~                          |
+| ~table-header-row~, ~table-row~ | ~table-cell~                                                             |
+| ~src-block~               | ~lang~, ~src-content~                                                            |
+| ~quote-block~, ~example-block~, ~verse-block~, ~center-block~, ~comment-block~, ~export-html-block~ | the matching ~-content~ node |
+| ~fixed-width~, ~comment-line~, ~separator~, ~keyword~ | the matching ~-content~ node, ~keyword-key~ and ~keyword-value~ |
+| ~figure~                  | ~figure-name~, ~figure-caption~, ~figure-image~ (which carries ~figure-target~ and ~figure-description~) |
+| ~named~                   | ~element-name~, then the element it names                                       |
+
+| Inline node                                        | Children                                    |
+|----------------------------------------------------+---------------------------------------------|
+| ~inline-text~                                      | the text                                    |
+| ~inline-bold-content~, ~inline-italic-content~, ~inline-underline-content~, ~inline-strike-content~, ~inline-superscript-content~, ~inline-subscript-content~, ~inline-code-content~, ~inline-verbatim-content~ | the nodes the body resolves to |
+| ~inline-escape~, ~inline-escape-char~, ~inline-line-break~ | the escaped text, or nothing         |
+| ~inline-link-with-desc~                            | ~link-target-content~, ~link-description-content~ |
+| ~inline-link-no-desc~                              | ~link-target-content~                       |
+| ~inline-footnote-ref~                              | ~footnote-label~                            |
+| ~inline-footnote-def~                              | ~footnote-label~, ~footnote-content~        |
+| ~inline-footnote-inline~                           | ~footnote-content~                          |
+| ~inline-raw-url~                                   | ~url-scheme~, then the rest of the URL      |
+
+A link target is serialised exactly as the document wrote it, ~yt:~ protocols
+included: an href is decided at render time by ~link-protocols~, so a JSON
+snapshot never depends on which resolvers a program happened to bind.
+
+~test/snapshots/sample-org-features-json.snap~ is the whole feature fixture in
+this shape, and it is compared on every test run, so a change to the vocabulary
+is a change to that file rather than a surprise.
 
 ---------------------
 

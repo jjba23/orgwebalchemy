@@ -9,13 +9,14 @@ and fast enough to sit inside an editor.
 
 ## Where OrgWebAlchemy is today
 
-At v1.2.9 the library is 2853 lines in three modules, and the split is the
+At v1.3.0 the library is 3079 lines in four modules, and the split is the
 architecture.
 
-- `(orgwebalchemy peg)` — 1699 lines, the grammar and everything that is true
+- `(orgwebalchemy peg)` — 1727 lines, the grammar and everything that is true
   about a link target: headings and their anchors, `figure-parts`,
   `named-parts`, `document-names`, `org-link-parts`/`protocol`/`path`/`search`,
-  `org-image-link?`. It knows nothing about HTML or Markdown.
+  `link-protocols`, `org-image-link?`. It knows nothing about HTML or Markdown,
+  and it names no link scheme it does not resolve itself.
 - `(orgwebalchemy html)` — 720 lines, rendering to an HTML fragment or SXML, with
   roughly thirty CSS class parameters so that a design system, not the library,
   decides what anything looks like. `heading-classes` is a procedure of the level;
@@ -24,24 +25,29 @@ architecture.
 - `(orgwebalchemy markdown)` — 434 lines from the same AST, falling back to inline
   HTML for underline, superscript and subscript, and to definition-list and
   footnote conventions where Markdown has them.
+- `(orgwebalchemy json)` — 198 lines, the AST as data: a document is an array of
+  nodes, a node is `{"type": ..., "children": [...]}`, and prose is resolved to
+  the inline nodes the renderers see, so a third renderer can be written in
+  another language without reimplementing the inline grammar.
 
 The supported surface is broad and honest about its edges: nested mixed lists and
 checkbox items, tables with empty cells, source/example/quote/verse/center/export
 blocks, keywords, comments, fixed-width lines, separators, footnotes, description
 lists, figures with captions and names, named tables and blocks, `#custom-id` and
-`*Heading` links, image links and `::search` suffixes. The known gaps are stated:
-captions on non-figure elements are not rendered, there is no incremental parse,
-and the benchmarks are not comparisons.
+`*Heading` links, image links and `::search` suffixes, and link protocols the host
+application resolves itself. The known gaps are stated: captions on non-figure
+elements are not rendered, there is no incremental parse, and the benchmarks are
+not comparisons.
 
 The testing is where this project is unusual, and it is the reason to trust the
 tree: table-driven unit suites for the grammar and both renderers, snapshot tests
-for whole documents, and two checks that compare a parser against a *previous* one
-rather than against an expectation — an equivalence sweep over 70,858 inputs when
-the run scanners were rewritten, and a stop-set proof that swept 391,094 positions
-looking for a character that begins an inline construct without being in the set
-the scanners leap over. The published benchmark tables report parse and render
-time, allocation per operation, GC counts and the fragments handed to the collapse
-pass.
+for whole documents — the Markdown rendering *and* the JSON tree — and two checks
+that compare a parser against a *previous* one rather than against an expectation
+— an equivalence sweep over 70,858 inputs when the run scanners were rewritten,
+and a stop-set proof that swept 391,094 positions looking for a character that
+begins an inline construct without being in the set the scanners leap over. The
+published benchmark tables report parse and render time, allocation per operation,
+GC counts and the fragments handed to the collapse pass.
 
 Decisions that constrain everything else:
 
@@ -58,6 +64,10 @@ Decisions that constrain everything else:
    carries the meaning.
 5. **A library, not an application.** No Emacs integration, no export dispatcher,
    no Babel, no file handling — strings in, strings out.
+6. **The parser classifies a link and stops.** A scheme it does not resolve itself
+   becomes a protocol symbol; what that protocol *means* is a resolver the host
+   binds in `link-protocols`, so `yt:` and `zotero:` never enter the grammar and
+   the renderers stay ignorant of both.
 
 ## The vision
 
@@ -65,9 +75,11 @@ Decisions that constrain everything else:
    the parser understands is a machine-readable statement derived from the grammar
    and exercised by a conformance suite shaped like the Org manual's element and
    object lists, so "does it read this?" is answered by running something.
-2. **The AST is a documented, versioned vocabulary.** A stable node set with a
-   schema and a JSON serialisation, so a third renderer — LaTeX, plain text,
-   Gemini, a wiki's own tree — can be written without reading `peg.scm`.
+2. **The AST is a documented, versioned vocabulary.** The node set and its JSON
+   serialisation are documented and tested; what is missing is a version number
+   and a machine-readable schema, so a third renderer — LaTeX, plain text, Gemini,
+   a wiki's own tree — can be written without reading `peg.scm` and can say which
+   revision of the vocabulary it targets.
 3. **Parsing is incremental.** After an edit, a document is re-parsed from the
    smallest enclosing element rather than from the beginning, which is what it
    takes to sit inside an editor or a live preview.
@@ -100,10 +112,6 @@ rest, and each has a hard part worth stating.
   table's special row; nothing renders it. Hard part: Markdown has alignment (in
   the delimiter row) and HTML has `align`/`style`, and the two disagree about
   where the information lives.
-- **Custom link protocols.** The parser classifies `http`, `file`, `#custom-id`,
-  `*Heading` and bare names, and stops there. Hard part: a registry that lets a
-  host application resolve `[[yt:…]]` or `[[zotero:…]]` without turning the parser
-  into a configuration surface.
 - **Non-HTML export blocks.** `#+BEGIN_EXPORT html` is trusted literal output;
   `latex` and others have no path. Hard part: what a Markdown renderer does with a
   LaTeX fragment — drop it loudly, or keep it and admit the output is not
@@ -118,9 +126,9 @@ rest, and each has a hard part worth stating.
   could not be expressed in the target format?" is the honest API for a library
   that claims to keep meaning; it also gives the Markdown fallbacks a testable
   specification.
-- **`org->json`.** The AST as data, for other languages, for snapshot testing and
-  for the node vocabulary documentation. The SXML path proves the tree is
-  serialisable; this makes the serialisation a contract.
+- **A versioned schema for the JSON vocabulary.** `org->json` is the contract, but
+  it is a contract without a version number or a machine-readable schema yet: the
+  README states it in prose and the snapshot test enforces it.
 - **A renderer for plain text or Gemini.** Both are closer to Org's own semantics
   than Markdown is, and either would prove the two-renderer agreement invariant is
   a property of the design rather than of the two modules that happen to exist.
@@ -142,9 +150,10 @@ rest, and each has a hard part worth stating.
 2. **A loss report.** A small API with a large effect on trust: it makes the
    Markdown fallbacks explicit, and it gives every future construct a place to
    declare what it costs in a format that cannot express it.
-3. **`org->json` plus node vocabulary documentation.** The change that turns the
-   AST from an implementation detail into an interface, and the prerequisite for a
-   third renderer written by somebody else.
+3. **A JSON schema and a third renderer.** `org->json` and the vocabulary
+   documentation turned the AST into an interface; what is left is a versioned
+   schema for it, and a renderer in another language written against that schema
+   alone — the test of whether the interface is really one.
 4. **Benchmark comparisons.** The tables exist and the fixtures exist; what is
    missing is a second implementation measured on the same files. A single honest
    comparison table would settle more arguments than any optimisation.
@@ -190,11 +199,12 @@ benchmark table that reports allocation and fragments rather than only wall time
 ## Getting there from here
 
 Captions first, because they are the largest stated gap and both renderers can be
-fixed at once. Then the loss report, which makes the fallbacks a contract. Then
-`org->json` and the node vocabulary, which is what turns the AST into an
-interface. The benchmarks and an example site can be done at any time and pay for
-themselves immediately; incremental parsing wants a design note before a line of
-code.
+fixed at once. Then a versioned schema for the vocabulary `org->json` now writes,
+and a third renderer in another language written against it — the only proof that
+the AST really became an interface. The loss report makes the fallbacks a
+contract and can travel alongside. The benchmarks and an example site can be done
+at any time and pay for themselves immediately; incremental parsing wants a design
+note before a line of code.
 
 *This document describes intent, not commitments: the exported procedures, the
 stated limitations and the licence are the contract, and nothing here changes them.*
