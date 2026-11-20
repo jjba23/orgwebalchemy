@@ -11,9 +11,9 @@ Build-Depends:
  guile-library,
  veritas
 Standards-Version: 4.6.2
-Homepage: https://codeberg.org/jjba23/orgwebalchemy
-Vcs-Git: https://codeberg.org/jjba23/orgwebalchemy.git
-Vcs-Browser: https://codeberg.org/jjba23/orgwebalchemy
+Homepage: https://github.com/jjba23/orgwebalchemy
+Vcs-Git: https://github.com/jjba23/orgwebalchemy.git
+Vcs-Browser: https://github.com/jjba23/orgwebalchemy
 Rules-Requires-Root: no
 
 Package: orgwebalchemy

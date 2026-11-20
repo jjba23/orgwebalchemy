@@ -59,7 +59,7 @@ ENV LANG=C.UTF-8 \
 
 LABEL org.opencontainers.image.title="orgwebalchemy" \
       org.opencontainers.image.description="Org-mode parser and HTML/Markdown renderer for Guile" \
-      org.opencontainers.image.url="https://codeberg.org/jjba23/orgwebalchemy" \
+      org.opencontainers.image.url="https://github.com/jjba23/orgwebalchemy" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 

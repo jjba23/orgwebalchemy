@@ -50,7 +50,7 @@ stdenv.mkDerivation {
 
   meta = with lib; {
     description = "Org-mode to HTML and Markdown converter written in GNU Guile";
-    homepage = "https://codeberg.org/jjba23/orgwebalchemy";
+    homepage = "https://github.com/jjba23/orgwebalchemy";
     license = licenses.mit;
     platforms = guile.meta.platforms;
   };

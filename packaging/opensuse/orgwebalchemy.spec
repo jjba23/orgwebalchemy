@@ -24,7 +24,7 @@ Version:        1.2.4
 Release:        0
 Summary:        Org-mode parser and HTML/Markdown renderer for Guile
 License:        MIT
-URL:            https://codeberg.org/jjba23/orgwebalchemy
+URL:            https://github.com/jjba23/orgwebalchemy
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  guile-lib

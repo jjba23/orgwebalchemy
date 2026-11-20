@@ -7,7 +7,7 @@
 #+description: A Guile Scheme library that parses Org-mode with a PEG grammar and renders clean HTML, Markdown, or SXML.
 #+keywords: Org-mode, Guile Scheme, PEG, HTML, Markdown, static site generator, free software
 
-[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]]
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/license-mit.svg]] [[https://github.com/jjba23/orgwebalchemy/actions/workflows/ci.yml/badge.svg][CI]]
 
 #+attr_html: :width 160 :alt OrgWebAlchemy logo
 [[file:logo.svg]]
@@ -765,7 +765,7 @@ See [[#contributing][Contributing]].
 - *Guile 3.0 or newer.* The library uses Guile's ~(ice-9 peg)~ module and Guile 3 features such as declarative modules.
 - *No external runtime dependencies.* Everything else comes from Guile's standard library.
 - *Guix is recommended, but optional.* It is the easiest way to get a matching Guile, the test framework, and the documentation tools. The library itself works with any Guile 3 installation.
-- *For development:* [[https://codeberg.org/jjba23/veritas][Veritas]], ~guile-documenta~, Texinfo, ~watchexec~, and ~guile-ares-rs~. The included [[file:manifest.scm][manifest.scm]] provides all of them.
+- *For development:* [[https://github.com/jjba23/veritas][Veritas]], ~guile-documenta~, Texinfo, ~watchexec~, and ~guile-ares-rs~. The included [[file:manifest.scm][manifest.scm]] provides all of them.
 
 The project is developed and tested on GNU/Linux. If you get it running elsewhere, a note in the issue tracker is welcome.
 
@@ -787,7 +787,7 @@ The project is developed and tested on GNU/Linux. If you get it running elsewher
 The jointhefreeworld channel carries ~guile-orgwebalchemy~ at 1.2.2, so a checkout of the channel is enough — no package definition to write:
 
 #+begin_src shell
-git clone https://codeberg.org/jjba23/guix-jointhefreeworld.git
+git clone https://github.com/jjba23/guix-jointhefreeworld.git
 guix install -L ./guix-jointhefreeworld guile-orgwebalchemy
 #+end_src
 
@@ -856,7 +856,7 @@ Each recipe carries its own dependency list, so a missing library fails the buil
 :END:
 
 #+begin_src shell
-git clone https://codeberg.org/jjba23/orgwebalchemy.git
+git clone https://github.com/jjba23/orgwebalchemy.git
 cd orgwebalchemy
 guix shell -m manifest.scm -- guile -L ./src examples/demo.scm
 #+end_src
@@ -896,7 +896,7 @@ OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwe
      (origin
        (method url-fetch)
        (uri (string-append
-             "https://codeberg.org/jjba23/orgwebalchemy/archive/v"
+             "https://github.com/jjba23/orgwebalchemy/archive/v"
              version ".tar.gz"))
        (sha256
         (base32 "0lb1xhd9fshhxadqh73z4md2ngpv3pqylsaxrj65qxzv1swwx2qy"))))
@@ -904,7 +904,7 @@ OrgWebAlchemy is on its way to being packaged in Guix officially as ~guile-orgwe
     (arguments
      (list #:source-directory "src"))
     (native-inputs (list guile-3.0))
-    (home-page "https://codeberg.org/jjba23/orgwebalchemy")
+    (home-page "https://github.com/jjba23/orgwebalchemy")
     (synopsis "Convert Org markup to HTML and Markdown with Guile Scheme")
     (description
      "OrgWebAlchemy parses Org-mode documents with a PEG grammar and renders
@@ -921,7 +921,7 @@ guix build -f guile-orgwebalchemy.scm
 When you bump the version, refresh the hash with:
 
 #+begin_src shell
-guix download https://codeberg.org/jjba23/orgwebalchemy/archive/v1.2.2.tar.gz
+guix download https://github.com/jjba23/orgwebalchemy/archive/v1.2.2.tar.gz
 #+end_src
 
 Then use the package as you would any other Guix package. The simplest way is
@@ -954,7 +954,7 @@ If you maintain a Guix channel, add the package definition to it and use
 Clone the repository and point Guile at its ~src~ directory:
 
 #+begin_src shell
-git clone https://codeberg.org/jjba23/orgwebalchemy.git
+git clone https://github.com/jjba23/orgwebalchemy.git
 export GUILE_LOAD_PATH="$PWD/orgwebalchemy/src${GUILE_LOAD_PATH:+:$GUILE_LOAD_PATH}"
 #+end_src
 
@@ -1285,7 +1285,7 @@ is a change to that file rather than a surprise.
 :END:
 
 The parser and the two renderers are benchmarked with
-[[https://codeberg.org/jjba23/veritas][Veritas]], the same test framework used
+[[https://github.com/jjba23/veritas][Veritas]], the same test framework used
 for the unit suite.  The benchmarks live in
 [[file:test/veritas/benchmark/scope.scm]] and are deliberately kept out of the
 normal test run: they are selected by the test type, so nothing slows down
@@ -1403,7 +1403,7 @@ additions; see [[#contributing][Contributing]].
 :CUSTOM_ID: testing
 :END:
 
-The project is tested with [[https://codeberg.org/jjba23/veritas][Veritas]], a
+The project is tested with [[https://github.com/jjba23/veritas][Veritas]], a
 testing framework for Guile.  Suites live under [[file:test/veritas/unit/]] and
 cover the grammar ([[file:test/veritas/unit/peg-spec.scm]]), the HTML renderer
 ([[file:test/veritas/unit/html-spec.scm]]) and the Markdown renderer
@@ -1511,8 +1511,8 @@ needed (the class-parameter tests show how).
 :CUSTOM_ID: projects
 :END:
 
-- LucidPlan :: https://codeberg.org/jjba23/lucidplan
-- WikiMusic :: https://codeberg.org/jjba23/wikimusic
+- LucidPlan :: https://github.com/jjba23/lucidplan
+- WikiMusic :: https://github.com/jjba23/wikimusic
 
 LucidPlan uses OrgWebAlchemy to render tickets, backlogs, and project notes:
 
@@ -1580,9 +1580,9 @@ Please include:
 - what actually happened, including the HTML or Markdown you got;
 - if a test fails, the failing test's name and report, if you have one.
 
-The issue tracker is on Codeberg:
+The issue tracker is on GitHub:
 
-https://codeberg.org/jjba23/orgwebalchemy/issues
+https://github.com/jjba23/orgwebalchemy/issues
 
 ** Sending a patch
 :PROPERTIES:
@@ -1592,7 +1592,7 @@ https://codeberg.org/jjba23/orgwebalchemy/issues
 A comfortable workflow:
 
 #+begin_src shell
-git clone https://codeberg.org/jjba23/orgwebalchemy.git
+git clone https://github.com/jjba23/orgwebalchemy.git
 cd orgwebalchemy
 guix shell -m manifest.scm
 
@@ -1601,7 +1601,7 @@ maak fmt      # format Scheme sources with guix style
 maak test     # run the unit suite
 #+end_src
 
-Then open a pull request on Codeberg. Small, focused changes are easiest to review.
+Then open a pull request on GitHub. Small, focused changes are easiest to review.
 If you are changing the grammar, add a test that pins down the old and
 new behavior, and consider running the equivalence check described under
 [[#testing][Testing]].
@@ -1614,7 +1614,7 @@ project's license, the MIT License.
 :CUSTOM_ID: development-tasks
 :END:
 
-The project uses [[https://codeberg.org/jjba23/maak][maak]] as its task runner.
+The project uses [[https://github.com/jjba23/maak][maak]] as its task runner.
 From the repository root:
 
 | Task          | What it does                                                       |
@@ -1634,11 +1634,13 @@ The manifest in [[file:manifest.scm][manifest.scm]] pins the development tools, 
 :CUSTOM_ID: continuous-integration
 :END:
 
-Pushes to the ~trunk~ branch trigger the Woodpecker pipeline in
-[[file:.woodpecker/byggsteg.yaml][.woodpecker/byggsteg.yaml]]. The pipeline submits the
+Pushes to the ~trunk~ branch trigger the GitHub Actions workflow in
+[[file:.github/workflows/ci.yml][.github/workflows/ci.yml]]. The workflow submits the
 ~maak-test~ and ~maak-deploy~ tasks to
-[[https://byggsteg.jointhefreeworld.org][Byggsteg]]. If you are changing the
-build or the test setup, run those tasks locally first.
+[[https://byggsteg.jointhefreeworld.org][Byggsteg]], which builds and tests the
+commit in the project's own environment and publishes the API documentation
+when the suite passes. If you are changing the build or the test setup, run
+those tasks locally first.
 
 ** Code of conduct
 :PROPERTIES:
@@ -1663,7 +1665,7 @@ https://lucidplan.jointhefreeworld.org/tickets/orgwebalchemy
 You can also contact the maintainer directly:
 
 - Josep Bigorra <jjbigorra@gmail.com>
-- Codeberg: https://codeberg.org/jjba23
+- GitHub: https://github.com/jjba23
 
 ** Support the project
 :PROPERTIES:

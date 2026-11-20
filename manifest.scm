@@ -25,23 +25,23 @@
 (define-public guile-veritas
   (package
     (name "guile-veritas")
-    (version "0.9.0")
+    (version "1.4.5")
     (source
      (origin
        (method git-fetch)
        (uri (git-reference
-             (url "https://codeberg.org/jjba23/veritas.git")
+             (url "https://github.com/jjba23/veritas.git")
              (commit (string-append "v" version))))
        (file-name (git-file-name name version))
        (sha256
-        (base32 "1pr8yjnxkrp2fylmn8ihjapin7iz94jqi4hbc6yd0ajll11ajxc9"))))
+        (base32 "1abf6vxhrw2q1g8xplqcd7xavn3dv59ir4d77xmpyds1mfijv338"))))
     (build-system guile-build-system)
     (arguments
      (list
       #:source-directory "src"))
     (native-inputs (list guile-3.0))
-    (propagated-inputs (list guile-fibers guile-json-4)) ;for versions >= 2.0.0
-    (home-page "https://codeberg.org/jjba23/veritas")
+    (propagated-inputs (list guile-fibers guile-json-4))
+    (home-page "https://github.com/jjba23/veritas")
     (synopsis "Testing framework for Guile")
     (description
      "Veritas is a testing framework for Guile with an @acronym{EDSL,

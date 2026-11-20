@@ -9,7 +9,7 @@ pkgver=1.2.2
 pkgrel=1
 pkgdesc="Org-mode parser and HTML/Markdown renderer for Guile"
 arch=('any')
-url="https://codeberg.org/jjba23/orgwebalchemy"
+url="https://github.com/jjba23/orgwebalchemy"
 license=('MIT')
 
 depends=(
