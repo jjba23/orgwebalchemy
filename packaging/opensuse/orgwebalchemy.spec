@@ -20,7 +20,7 @@
 %global debug_package %{nil}
 
 Name:           orgwebalchemy
-Version:        1.2.4
+Version:        1.3.0
 Release:        0
 Summary:        Org-mode parser and HTML/Markdown renderer for Guile
 License:        MIT
@@ -73,7 +73,7 @@ VERITAS_TEST_TYPE=unit VERITAS_RUN_BENCHMARKS=false guile -L ./src -L ./test -c 
 
 %files
 %license LICENSE
-%doc README.org
+%doc README.org NEWS.org
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
 %dir %{_datadir}/guile/site/3.0

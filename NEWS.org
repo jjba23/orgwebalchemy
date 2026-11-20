@@ -1,0 +1,68 @@
+#+title: Changelog and News 📰
+#+author: Josep Bigorra
+#+email: jjbigorra@gmail.com
+#+options: toc:nil
+
+All notable changes to this project are documented here, one section per release
+tag.  The project follows [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]] for its public API: the exported
+procedures and the shape of the JSON tree.
+
+*[Unreleased]*
+
+Nothing yet.
+
+*[Released]*
+
+** v1.3.0 (2026-11-20)
+
+MIT, GitHub, and the two features that turn the AST into an interface.
+
+*** License
+
+- The library and its documentation are MIT, not LGPL-3.0-or-later and
+  FDL-1.3-or-later.  =COPYING= becomes =LICENSE=, every source header and recipe
+  carries =SPDX-License-Identifier: MIT=, and the packaging metadata, the
+  container label and the README name the new licence.  Nothing in the code, the
+  build or the tests changes; a site that embeds the library stops inheriting an
+  obligation it did not ask for.
+- Breaking for anyone who reads the licence metadata: =LGPL-3.0-or-later= and
+  =FDL-1.3-or-later= are both gone, and =MIT= covers the code and the
+  documentation alike.
+
+*** Added
+
+- =link-protocols=, a parameter holding an alist of protocol symbols and
+  resolver procedures, so a host application resolves =[[yt:...]]= and
+  =[[zotero:...]]= itself: a resolver takes the path and returns the href to
+  use, or =#f= to leave the target as the document wrote it.  =org-link-href=
+  asks the registry first, so one binding serves both renderers, and the parser
+  still learns no scheme it does not resolve itself.
+- =(orgwebalchemy json)=: =org->json=, =org-ast->json=, =inline-org->json= and
+  =json-string=.  A document is always an array of nodes, a node is always
+  ={"type": ..., "children": [...]}=, and prose is resolved to the inline nodes
+  the renderers see.  Guile's standard library has no JSON writer, so the
+  library writes it, and the runtime dependency on Guile alone is unchanged.
+- The node vocabulary, block and inline, documented in the README with the
+  children each node carries.
+- A JSON snapshot of the whole feature fixture, compared on every test run.
+
+*** Changed
+
+- =org-link-display= states what a resolver does: it changes the href, never the
+  text a link shows, because =[[yt:dQw4w9WgXcQ]]= says exactly that and the
+  resolution belongs in the attribute.
+- The README names four modules rather than three, and its quick-reference
+  table, module map and API overview carry the new one.
+
+*** Packaging
+
+- The dev manifest pins Veritas v1.4.5, from GitHub rather than the old forge.
+- CI moves from Woodpecker to GitHub Actions: =ci.yml= calls the shared Byggsteg
+  workflow with the same =maak-test= and =maak-deploy= tasks, and
+  =.woodpecker/= is gone.
+- Veritas collected 48 suites, 244 tests and 378 assertions at this release.
+
+** Earlier releases
+
+Releases before this file are recorded by their git tags, and by the packaging
+changelog in =packaging/debian/changelog=.

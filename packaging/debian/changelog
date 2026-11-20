@@ -1,3 +1,15 @@
+orgwebalchemy (1.3.0-1) unstable; urgency=medium
+
+  * Relicensed under the MIT License: COPYING becomes LICENSE and every
+    source header carries SPDX-License-Identifier: MIT.
+  * New module (orgwebalchemy json), with org->json, org-ast->json,
+    inline-org->json and json-string.
+  * New link-protocols parameter, so a host application resolves its own
+    link protocols.
+  * Source, homepages and CI move to GitHub.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Fri, 20 Nov 2026 12:00:00 +0000
+
 orgwebalchemy (1.2.9-1) unstable; urgency=medium
 
   * Build against the jointhefreeworld collection at v1.0.4.
