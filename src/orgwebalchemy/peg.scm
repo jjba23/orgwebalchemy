@@ -3,6 +3,29 @@
 ;; SPDX-License-Identifier: MIT
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+;;; Commentary:
+;;
+;; The grammar and the two entry points every renderer reads through: a whole
+;; Org document becomes a tree with `org->ast', and a string of inline Org
+;; markup becomes a tree with `inline-org->ast'.  Nothing here renders: the
+;; module knows the language, the renderers know the output.
+;;
+;; ```mermaid
+;; flowchart LR
+;;   org["Org text"] --> doc["org->ast<br/>block grammar"]
+;;   inline["inline text"] --> inline-ast["inline-org->ast<br/>inline grammar"]
+;;   doc --> tree["an AST of tagged lists"]
+;;   inline-ast --> tree
+;;   tree --> html["(orgwebalchemy html)"]
+;;   tree --> markdown["(orgwebalchemy markdown)"]
+;;   tree --> json["(orgwebalchemy json)"]
+;; ```
+;;
+;; The links, figures and named elements are classified once, here, so the
+;; renderers cannot disagree about what a target means.
+
+;;; Code:
+
 (define-module (orgwebalchemy peg)
   #:declarative? #t
   #:use-module (ice-9 match)

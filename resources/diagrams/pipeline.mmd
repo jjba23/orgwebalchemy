@@ -1,0 +1,8 @@
+flowchart LR
+  org["Org text"] --> doc["org->ast<br/>block grammar"]
+  inline["inline text"] --> inline-ast["inline-org->ast<br/>inline grammar"]
+  doc --> tree["an AST of tagged lists"]
+  inline-ast --> tree
+  tree --> html["(orgwebalchemy html)"]
+  tree --> markdown["(orgwebalchemy markdown)"]
+  tree --> json["(orgwebalchemy json)"]

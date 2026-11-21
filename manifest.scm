@@ -51,7 +51,9 @@ concurrently by default.")
     (license license:lgpl3+)))
 
 (packages->manifest (list guile-3.0-latest
-                          guile-documenta
+                          ;; `specification->package' finds `guile-dokgen' in
+                          ;; the jointhefreeworld channel `channels.scm' pins.
+                          (specification->package "guile-dokgen")
                           texinfo
                           watchexec
                           guile-veritas
