@@ -779,7 +779,7 @@ See [[#contributing][Contributing]].
 - *Guile 3.0 or newer.* The library uses Guile's ~(ice-9 peg)~ module and Guile 3 features such as declarative modules.
 - *No external runtime dependencies.* Everything else comes from Guile's standard library.
 - *Guix is recommended, but optional.* It is the easiest way to get a matching Guile, the test framework, and the documentation tools. The library itself works with any Guile 3 installation.
-- *For development:* [[https://github.com/jjba23/veritas][Veritas]], ~guile-documenta~, Texinfo, ~watchexec~, and ~guile-ares-rs~. The included [[file:manifest.scm][manifest.scm]] provides all of them.
+- *For development:* [[https://github.com/jjba23/veritas][Veritas]], ~guile-dokgen~, Texinfo, ~watchexec~, and ~guile-ares-rs~. The included [[file:manifest.scm][manifest.scm]] provides all of them.
 
 The project is developed and tested on GNU/Linux. If you get it running elsewhere, a note in the issue tracker is welcome.
 
@@ -1635,7 +1635,7 @@ From the repository root:
 |---------------+--------------------------------------------------------------------|
 | ~maak test~   | Run the unit suite with Veritas.                                   |
 | ~maak fmt~    | Format every ~.scm~ file with ~guix style~.                        |
-| ~maak docs~   | Generate the API documentation with ~guile-documenta~ and Texinfo. |
+| ~maak docs~   | Generate the API documentation with ~guile-dokgen~ and Texinfo.    |
 | ~maak repl~   | Start a development REPL with ~guile-ares-rs~.                     |
 | ~maak dev~    | Watch the sources and re-run the tests on change.                  |
 | ~maak deploy~ | Generate and publish the API documentation.                        |
