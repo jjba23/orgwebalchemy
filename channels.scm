@@ -18,7 +18,7 @@
         (branch "trunk")
         ;; `guile-dokgen' is in this channel, and `manifest.scm' names it, so
         ;; the Guix revision and the collection are pinned together.
-        (commit "139880f859c578974f68d959c956ab25042b7258")
+        (commit "dc9f38c259e924bd9d15637498eb73a58a1f265d")
         (introduction
          (make-channel-introduction
           "b0ac3f05075d7959860fc9e1db5871acddea3986"

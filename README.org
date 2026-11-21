@@ -40,7 +40,7 @@ The short version, if you already have Guile and this checkout on your load path
 
 And the full technical API documentation lives here:
 
-https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html
+https://jointhefreeworld.org/api-docs/orgwebalchemy/index.html
 
 What changed in each release is in [[file:NEWS.org][NEWS.org]].
 
@@ -1105,7 +1105,7 @@ That prints:
 
 OrgWebAlchemy is four small modules.  Each builds on the one before it, so you
 only pull in what you need.  The full generated API documentation is at
-https://jointhefreeworld.org/api-docs/orgwebalchemy/API.html.
+https://jointhefreeworld.org/api-docs/orgwebalchemy/index.html.
 
 ** ~(orgwebalchemy peg)~ -- the parser
 :PROPERTIES:
