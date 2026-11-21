@@ -4,6 +4,7 @@
 ;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 (use-modules (guix packages)
+             (gnu packages)
              (gnu)
              (guix utils)
              (guix git-download)
@@ -54,7 +55,7 @@ concurrently by default.")
                           ;; `specification->package' finds `guile-dokgen' in
                           ;; the jointhefreeworld channel `channels.scm' pins.
                           (specification->package "guile-dokgen")
-                          texinfo
+                          (specification->package "texinfo")
                           watchexec
                           guile-veritas
                           guile-ares-rs))

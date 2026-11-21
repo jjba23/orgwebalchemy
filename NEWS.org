@@ -13,6 +13,21 @@ Nothing yet.
 
 *[Released]*
 
+** v1.3.3 (2026-11-21)
+
+The API reference is rendered with Texinfo 7.3, so dokgen's stylesheet applies
+and the page reads as cards with an index and a filter.  Nothing in the parser,
+the renderers or the JSON tree changes.
+
+*** Changed
+
+- `manifest.scm` names `(specification->package "texinfo")` rather than the
+  bare `texinfo` binding, which selected 6.8.  `texi2any` therefore emits the
+  7.x definition structure (`def-block`, `def-line`, `def-name`), the structure
+  `dokgen.css` styles.
+- `channels.scm` pins the jointhefreeworld revision `24db897`, which carries
+  `guile-dokgen` 0.9.2.
+
 ** v1.3.2 (2026-11-21)
 
 The README's API links name the page the reference is, and the pinned channel
