@@ -12,6 +12,8 @@
 #+attr_html: :width 160 :alt OrgWebAlchemy logo
 [[file:logo.svg]]
 
+- 📖 *API reference:* [[https://jointhefreeworld.org/api-docs/orgwebalchemy/index.html][OrgWebAlchemy API reference]]
+
 #+begin_quote
 *Org-mode in. HTML and Markdown out.*
 
