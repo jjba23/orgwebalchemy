@@ -13,6 +13,16 @@ Nothing yet.
 
 *[Released]*
 
+** v1.3.7 (2026-11-26)
+
+The pinned channel carries the dokgen that folds each definition's source
+behind a panel the reader opens.  Nothing in the parser, the renderers or the
+JSON tree changes.
+
+*** Changed
+
+- The pinned Guix channel carries `guile-dokgen` 0.12.0: the published API reference folds the source behind each definition into a panel a reader opens, and reads on a quieter page with translucent surfaces.
+
 ** v1.3.3 (2026-11-21)
 
 The API reference is rendered with Texinfo 7.3, so dokgen's stylesheet applies

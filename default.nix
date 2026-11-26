@@ -17,7 +17,7 @@
 
 stdenv.mkDerivation {
   pname = "guile-orgwebalchemy";
-  version = "1.3.0";
+  version = "1.3.7";
 
   src = ./.;
 

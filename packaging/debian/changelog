@@ -1,3 +1,10 @@
+orgwebalchemy (1.3.7-1) unstable; urgency=medium
+
+  * Sync with upstream 1.3.7: the pinned Guix channel carries guile-dokgen
+    0.12.0, so the API reference folds each definition's source into a panel.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 26 Nov 2026 13:55:00 +0000
+
 orgwebalchemy (1.3.0-1) unstable; urgency=medium
 
   * Relicensed under the MIT License: COPYING becomes LICENSE and every

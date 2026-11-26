@@ -20,7 +20,7 @@
 %global debug_package %{nil}
 
 Name:           orgwebalchemy
-Version:        1.3.0
+Version:        1.3.7
 Release:        0
 Summary:        Org-mode parser and HTML/Markdown renderer for Guile
 License:        MIT
